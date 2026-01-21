@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 
-import Image from "next/image";
+import { headers } from "next/headers";
 import { proxiedImageSrc } from "@/src/lib/imageUrl";
 import TopStories from "@/app/components/TopStories";
 import InstaPostMarquee from "@/app/components/InstaPostMarquee";
@@ -9,16 +9,14 @@ import NewsContainer2 from "@/app/components/NewsContainer2";
 import NewsContainer3 from "@/app/components/NewsContainer3";
 import ClubArticles from "@/app/components/ClubArticles";
 import SpotlightArticles from "@/app/components/SpotlightArticles";
-import DuoArticles from "@/app/components/DuoArticles"; // ✅ NEW
+import DuoArticles from "@/app/components/DuoArticles";
 
 import type { ClubArticlesConfig, ClubPosition } from "@/src/lib/clubArticles";
 import type {
   SpotlightArticlesConfig,
   SpotlightPosition,
 } from "@/src/lib/spotlightArticles";
-import type { DuoArticlesConfig, DuoPosition } from "@/src/lib/duoArticles"; // ✅ NEW
-
-import { getApiBaseUrl } from "@/src/lib/apiBase";
+import type { DuoArticlesConfig, DuoPosition } from "@/src/lib/duoArticles";
 
 type Article = {
   id: string;
@@ -30,18 +28,14 @@ type Article = {
   featured: number;
   breaking: number;
 
-  // ✅ ticker
   ticker: number;
 
-  // ✅ Main News Container (Container 1)
   mainHero?: number;
   mainHeroSlot?: string | null;
 
-  // ✅ News Container 2
   hero2?: number;
   hero2Slot?: string | null;
 
-  // ✅ News Container 3
   hero3?: number;
   hero3Slot?: string | null;
 
@@ -50,69 +44,57 @@ type Article = {
   coverImage?: string | null;
 };
 
+async function getBaseUrl() {
+  const h = await headers(); // ✅ await fixes the .get() TS errors
+
+  const proto = h.get("x-forwarded-proto") || "http";
+  const host =
+    h.get("x-forwarded-host") ||
+    h.get("host") ||
+    process.env.NEXT_PUBLIC_SITE_URL?.replace(/^https?:\/\//, "") ||
+    "localhost:3000";
+
+  return `${proto}://${host}`;
+}
+
+async function safeFetchJson<T>(path: string): Promise<T | null> {
+  try {
+    const base = await getBaseUrl(); // ✅ now await here too
+    const res = await fetch(`${base}${path}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    return (await res.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
 async function getArticles(): Promise<Article[]> {
-  try {
-    const base = getApiBaseUrl();
-    const res = await fetch(`${base}/api/articles`, {
-      cache: "no-store",
-    });
-    const json = await res.json();
-    return json?.articles || [];
-  } catch {
-    // ✅ Prevent SSR crash on production if backend is cold / sleeping / fails
-    return [];
-  }
+  const json = await safeFetchJson<{ ok: boolean; articles: Article[] }>(
+    "/api/articles"
+  );
+  return json?.articles || [];
 }
 
-// ✅ fetch club articles config
 async function getClubConfig(): Promise<ClubArticlesConfig | null> {
-  try {
-    const base = getApiBaseUrl();
-    const res = await fetch(`${base}/api/club-articles`, {
-      cache: "no-store",
-    });
-
-    if (!res.ok) return null;
-
-    const json = await res.json();
-    return json?.config || null;
-  } catch {
-    return null;
-  }
+  const json = await safeFetchJson<{ ok: boolean; config: ClubArticlesConfig }>(
+    "/api/club-articles"
+  );
+  return json?.config || null;
 }
 
-// ✅ fetch spotlight articles config
 async function getSpotlightConfig(): Promise<SpotlightArticlesConfig | null> {
-  try {
-    const base = getApiBaseUrl();
-    const res = await fetch(`${base}/api/spotlight-articles`, {
-      cache: "no-store",
-    });
-
-    if (!res.ok) return null;
-
-    const json = await res.json();
-    return json?.config || null;
-  } catch {
-    return null;
-  }
+  const json = await safeFetchJson<{
+    ok: boolean;
+    config: SpotlightArticlesConfig;
+  }>("/api/spotlight-articles");
+  return json?.config || null;
 }
 
-// ✅ NEW: fetch duo articles config
 async function getDuoConfig(): Promise<DuoArticlesConfig | null> {
-  try {
-    const base = getApiBaseUrl();
-    const res = await fetch(`${base}/api/duo-articles`, {
-      cache: "no-store",
-    });
-
-    if (!res.ok) return null;
-
-    const json = await res.json();
-    return json?.config || null;
-  } catch {
-    return null;
-  }
+  const json = await safeFetchJson<{ ok: boolean; config: DuoArticlesConfig }>(
+    "/api/duo-articles"
+  );
+  return json?.config || null;
 }
 
 function groupByCategory(articles: Article[]) {
@@ -124,22 +106,18 @@ function groupByCategory(articles: Article[]) {
   return map;
 }
 
-// ✅ Helper: guard slug
 function hasValidSlug(a: Article) {
   return typeof a?.slug === "string" && a.slug.trim().length > 0;
 }
 
-// ✅ Helper: safe href builder (never returns /article/undefined)
 function safeArticleHref(a: Article) {
   return hasValidSlug(a) ? `/article/${a.slug.trim()}` : "#";
 }
 
-// ✅ Helper: cover image guard
 function hasCoverImage(a: Article) {
   return typeof a?.coverImage === "string" && a.coverImage.trim().length > 0;
 }
 
-/** ✅ Category badge colors */
 function categoryBadgeClass(category: string) {
   switch (category) {
     case "World":
@@ -183,65 +161,50 @@ export default async function HomePage() {
     getDuoConfig(),
   ]);
 
-  // ✅ Only published AND slug-present on public site
   const published = all
     .filter((a) => a.status === "published")
     .filter((a) => hasValidSlug(a));
 
-  // Sort newest first (publishedAt fallback createdAt)
   published.sort((a, b) => {
     const ad = new Date(a.publishedAt || a.createdAt).getTime();
     const bd = new Date(b.publishedAt || b.createdAt).getTime();
     return bd - ad;
   });
 
-  // ✅ Club Articles resolved list (ordered ids -> articles)
   const clubPosition = (clubConfig?.position || null) as ClubPosition | null;
   let clubArticles: Article[] | null = null;
-
   if (clubConfig?.articleIds?.length === 5) {
     const byId = new Map<string, Article>();
     for (const a of published) byId.set(a.id, a);
-
     const ordered = clubConfig.articleIds
       .map((id) => byId.get(id))
       .filter(Boolean) as Article[];
-
     if (ordered.length === 5) clubArticles = ordered;
   }
 
-  // ✅ Spotlight Articles resolved list (ordered ids -> articles)
   const spotlightPosition = (spotlightConfig?.position ||
     null) as SpotlightPosition | null;
   let spotlightArticles: Article[] | null = null;
-
   if (spotlightConfig?.articleIds?.length === 3) {
     const byId = new Map<string, Article>();
     for (const a of published) byId.set(a.id, a);
-
     const ordered = spotlightConfig.articleIds
       .map((id) => byId.get(id))
       .filter(Boolean) as Article[];
-
     if (ordered.length === 3) spotlightArticles = ordered;
   }
 
-  // ✅ Duo Articles resolved list (ordered ids -> articles)
   const duoPosition = (duoConfig?.position || null) as DuoPosition | null;
   let duoArticles: Article[] | null = null;
-
   if (duoConfig?.articleIds?.length === 2) {
     const byId = new Map<string, Article>();
     for (const a of published) byId.set(a.id, a);
-
     const ordered = duoConfig.articleIds
       .map((id) => byId.get(id))
       .filter(Boolean) as Article[];
-
     if (ordered.length === 2) duoArticles = ordered;
   }
 
-  // ✅ Main News Container: pick one article per slot
   const mainHeroBySlot: Record<string, Article | undefined> = {};
   for (const a of published) {
     if (Number(a.mainHero || 0) === 1 && a.mainHeroSlot) {
@@ -249,7 +212,6 @@ export default async function HomePage() {
     }
   }
 
-  // ✅ News Container 2: pick one article per slot
   const hero2BySlot: Record<string, Article | undefined> = {};
   for (const a of published) {
     if (Number(a.hero2 || 0) === 1 && a.hero2Slot) {
@@ -257,7 +219,6 @@ export default async function HomePage() {
     }
   }
 
-  // ✅ News Container 3: pick one article per slot
   const hero3BySlot: Record<string, Article | undefined> = {};
   for (const a of published) {
     if (Number(a.hero3 || 0) === 1 && a.hero3Slot) {
@@ -265,15 +226,11 @@ export default async function HomePage() {
     }
   }
 
-  // ✅ Ticker items list
   const tickerItems = published.filter((a) => a.ticker === 1).slice(0, 12);
-
-  // ✅ Insta post strip items (ALL published, newest first)
   const postStripItems = published.slice(0, 14);
 
   const byCat = groupByCategory(published);
 
-  // Categories we want on homepage (all on one page)
   const sections = [
     "World",
     "India",
@@ -285,12 +242,10 @@ export default async function HomePage() {
     "Lifestyle",
   ];
 
-  // ✅ Featured used for Top Stories (new hero + grid design)
   const featured = published.filter((a) => a.featured === 1).slice(0, 4);
 
   return (
     <div className="min-h-screen bg-black text-white">
-      {/* ✅ Ticker bar (between header and main) */}
       {tickerItems.length > 0 ? (
         <div className="border-b border-white/10 bg-black/80 backdrop-blur">
           <div className="mx-auto max-w-6xl px-4 py-2 overflow-hidden">
@@ -314,80 +269,68 @@ export default async function HomePage() {
       ) : null}
 
       <main className="mx-auto max-w-6xl px-4 py-8">
-        {/* ✅ Insta Post Moving Strip (for ALL published articles) */}
         <InstaPostMarquee
           articles={postStripItems}
           speedSeconds={38}
           title="Insta Post Strip"
         />
 
-        {/* ✅ Main News (slot: after_insta_strip) */}
         {mainHeroBySlot["after_insta_strip"] ? (
           <div className="mt-6">
             <MainNewsContainer article={mainHeroBySlot["after_insta_strip"]!} />
           </div>
         ) : null}
 
-        {/* ✅ Container 2 (slot: after_insta_strip) */}
         {hero2BySlot["after_insta_strip"] ? (
           <div className="mt-6">
             <NewsContainer2 article={hero2BySlot["after_insta_strip"]!} />
           </div>
         ) : null}
 
-        {/* ✅ Container 3 (slot: after_insta_strip) */}
         {hero3BySlot["after_insta_strip"] ? (
           <div className="mt-6">
             <NewsContainer3 article={hero3BySlot["after_insta_strip"]!} />
           </div>
         ) : null}
 
-        {/* ✅ NEW Top Stories Design (rotating hero + cards below) */}
         <TopStories featured={featured} />
 
-        {/* ✅ Spotlight Articles (position: after_top_stories) */}
         {spotlightArticles && spotlightPosition === "after_top_stories" ? (
           <div className="mt-6">
             <SpotlightArticles articles={spotlightArticles} />
           </div>
         ) : null}
 
-        {/* ✅ Duo Articles (position: after_top_stories) */}
         {duoArticles && duoPosition === "after_top_stories" ? (
           <div className="mt-6">
             <DuoArticles articles={duoArticles} />
           </div>
         ) : null}
 
-        {/* ✅ Club Articles (position: after_top_stories) */}
         {clubArticles && clubPosition === "after_top_stories" ? (
           <div className="mt-6">
             <ClubArticles articles={clubArticles} />
           </div>
         ) : null}
 
-        {/* ✅ Main News (slot: after_top_stories) */}
         {mainHeroBySlot["after_top_stories"] ? (
           <div className="mt-6">
             <MainNewsContainer article={mainHeroBySlot["after_top_stories"]!} />
           </div>
         ) : null}
 
-        {/* ✅ Container 2 (slot: after_top_stories) */}
         {hero2BySlot["after_top_stories"] ? (
           <div className="mt-6">
             <NewsContainer2 article={hero2BySlot["after_top_stories"]!} />
           </div>
         ) : null}
 
-        {/* ✅ Container 3 (slot: after_top_stories) */}
         {hero3BySlot["after_top_stories"] ? (
           <div className="mt-6">
             <NewsContainer3 article={hero3BySlot["after_top_stories"]!} />
           </div>
         ) : null}
 
-        {/* Category Sections */}
         <div className="space-y-12">
           {sections.map((cat) => {
             const items = byCat.get(cat) || [];
@@ -416,7 +359,6 @@ export default async function HomePage() {
                 </div>
 
                 <div className="space-y-4">
-                  {/* ✅ MAIN NEWS (NO container / open layout) */}
                   <a
                     href={safeArticleHref(main)}
                     aria-disabled={!mainOk}
@@ -427,7 +369,6 @@ export default async function HomePage() {
                     }}
                   >
                     <div className="flex flex-col md:flex-row gap-4 md:gap-6">
-                      {/* Image Left */}
                       <div className="w-full md:w-[340px]">
                         {mainImgSrc ? (
                           <img
@@ -443,7 +384,6 @@ export default async function HomePage() {
                         )}
                       </div>
 
-                      {/* Content Right */}
                       <div className="flex-1 min-w-0">
                         <div className="mb-2 flex items-center gap-2 text-xs">
                           {main.breaking === 1 ? (
@@ -479,7 +419,6 @@ export default async function HomePage() {
                     </div>
                   </a>
 
-                  {/* ✅ 3 SMALL CARDS BELOW */}
                   {small.length ? (
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       {small.map((a) => {
@@ -548,7 +487,6 @@ export default async function HomePage() {
                   ) : null}
                 </div>
 
-                {/* ✅ Container 2 (slot: after_india_section) */}
                 {cat === "India" && hero2BySlot["after_india_section"] ? (
                   <div className="mt-6">
                     <NewsContainer2
@@ -557,7 +495,6 @@ export default async function HomePage() {
                   </div>
                 ) : null}
 
-                {/* ✅ Container 3 (slot: after_india_section) */}
                 {cat === "India" && hero3BySlot["after_india_section"] ? (
                   <div className="mt-6">
                     <NewsContainer3
@@ -566,7 +503,6 @@ export default async function HomePage() {
                   </div>
                 ) : null}
 
-                {/* ✅ Main News (slot: after_india_section) */}
                 {cat === "India" && mainHeroBySlot["after_india_section"] ? (
                   <div className="mt-6">
                     <MainNewsContainer
@@ -575,21 +511,18 @@ export default async function HomePage() {
                   </div>
                 ) : null}
 
-                {/* ✅ Duo Articles (position: after_<category>_section) */}
                 {duoArticles && duoPosition === duoKey ? (
                   <div className="mt-6">
                     <DuoArticles articles={duoArticles} />
                   </div>
                 ) : null}
 
-                {/* ✅ Spotlight Articles (position: after_<category>_section) */}
                 {spotlightArticles && spotlightPosition === spotlightKey ? (
                   <div className="mt-6">
                     <SpotlightArticles articles={spotlightArticles} />
                   </div>
                 ) : null}
 
-                {/* ✅ Club Articles (position: after_<category>_section) */}
                 {clubArticles && clubPosition === clubKey ? (
                   <div className="mt-6">
                     <ClubArticles articles={clubArticles} />
