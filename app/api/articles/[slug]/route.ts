@@ -1,12 +1,16 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/src/lib/db";
 
+export const runtime = "nodejs";
+
 export async function GET(
-  req: Request,
-  ctx: { params?: { slug?: string } }
+  req: NextRequest,
+  ctx: { params: Promise<{ slug: string }> }
 ) {
   // 1) Primary: Next params
-  let slug = typeof ctx?.params?.slug === "string" ? ctx.params.slug : "";
+  const awaitedParams = await ctx.params;
+  let slug =
+    typeof awaitedParams?.slug === "string" ? awaitedParams.slug : "";
 
   // 2) Fallback: parse from URL path (fixes "Missing slug" even when URL has it)
   if (!slug) {

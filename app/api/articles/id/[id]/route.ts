@@ -1,8 +1,10 @@
 // app/api/articles/id/[id]/route.ts
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/src/lib/db";
 import { slugify } from "@/src/lib/slug";
 import { normalizeImageUrl } from "@/src/lib/imageUrl";
+
+export const runtime = "nodejs";
 
 type Payload = {
   title?: string;
@@ -67,7 +69,7 @@ function resolveId(req: Request, params: any) {
 }
 
 export async function GET(
-  req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const db = getDb();
@@ -75,12 +77,18 @@ export async function GET(
   const id = resolveId(req, awaitedParams);
 
   if (!id) {
-    return NextResponse.json({ ok: false, error: "Missing id" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Missing id" },
+      { status: 400 }
+    );
   }
 
   const row: any = db.prepare(`SELECT * FROM articles WHERE id = ?`).get(id);
   if (!row) {
-    return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+    return NextResponse.json(
+      { ok: false, error: "Not found" },
+      { status: 404 }
+    );
   }
 
   return NextResponse.json({
@@ -93,7 +101,7 @@ export async function GET(
 }
 
 export async function PUT(
-  req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const db = getDb();
@@ -101,7 +109,10 @@ export async function PUT(
   const id = resolveId(req, awaitedParams);
 
   if (!id) {
-    return NextResponse.json({ ok: false, error: "Missing id" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Missing id" },
+      { status: 400 }
+    );
   }
 
   const payload: Payload = await req.json().catch(() => ({} as any));
@@ -118,9 +129,7 @@ export async function PUT(
     );
   }
 
-  const slug = payload.slug
-    ? slugify(String(payload.slug))
-    : slugify(title);
+  const slug = payload.slug ? slugify(String(payload.slug)) : slugify(title);
 
   const tagsJson = JSON.stringify(safeJsonParseTags(payload.tags));
   const featured = toInt01(payload.featured);
@@ -173,9 +182,7 @@ export async function PUT(
   }
 
   const status =
-    String(payload.status).toLowerCase() === "published"
-      ? "published"
-      : "draft";
+    String(payload.status).toLowerCase() === "published" ? "published" : "draft";
 
   const now = new Date().toISOString();
   const publishedAt = status === "published" ? payload.publishedAt || now : null;
@@ -242,14 +249,17 @@ export async function PUT(
     );
 
   if (!info.changes) {
-    return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+    return NextResponse.json(
+      { ok: false, error: "Not found" },
+      { status: 404 }
+    );
   }
 
   return NextResponse.json({ ok: true, id });
 }
 
 export async function DELETE(
-  req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const db = getDb();
@@ -257,13 +267,19 @@ export async function DELETE(
   const id = resolveId(req, awaitedParams);
 
   if (!id) {
-    return NextResponse.json({ ok: false, error: "Missing id" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Missing id" },
+      { status: 400 }
+    );
   }
 
   const info = db.prepare(`DELETE FROM articles WHERE id = ?`).run(id);
 
   if (!info.changes) {
-    return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+    return NextResponse.json(
+      { ok: false, error: "Not found" },
+      { status: 404 }
+    );
   }
 
   return NextResponse.json({ ok: true });
