@@ -18,6 +18,8 @@ import type {
 } from "@/src/lib/spotlightArticles";
 import type { DuoArticlesConfig, DuoPosition } from "@/src/lib/duoArticles"; // ✅ NEW
 
+import { getApiBaseUrl } from "@/src/lib/apiBase";
+
 type Article = {
   id: string;
   title: string;
@@ -49,17 +51,24 @@ type Article = {
 };
 
 async function getArticles(): Promise<Article[]> {
-  const res = await fetch("http://localhost:3000/api/articles", {
-    cache: "no-store",
-  });
-  const json = await res.json();
-  return json?.articles || [];
+  try {
+    const base = getApiBaseUrl();
+    const res = await fetch(`${base}/api/articles`, {
+      cache: "no-store",
+    });
+    const json = await res.json();
+    return json?.articles || [];
+  } catch {
+    // ✅ Prevent SSR crash on production if backend is cold / sleeping / fails
+    return [];
+  }
 }
 
 // ✅ fetch club articles config
 async function getClubConfig(): Promise<ClubArticlesConfig | null> {
   try {
-    const res = await fetch("http://localhost:3000/api/club-articles", {
+    const base = getApiBaseUrl();
+    const res = await fetch(`${base}/api/club-articles`, {
       cache: "no-store",
     });
 
@@ -75,7 +84,8 @@ async function getClubConfig(): Promise<ClubArticlesConfig | null> {
 // ✅ fetch spotlight articles config
 async function getSpotlightConfig(): Promise<SpotlightArticlesConfig | null> {
   try {
-    const res = await fetch("http://localhost:3000/api/spotlight-articles", {
+    const base = getApiBaseUrl();
+    const res = await fetch(`${base}/api/spotlight-articles`, {
       cache: "no-store",
     });
 
@@ -91,7 +101,8 @@ async function getSpotlightConfig(): Promise<SpotlightArticlesConfig | null> {
 // ✅ NEW: fetch duo articles config
 async function getDuoConfig(): Promise<DuoArticlesConfig | null> {
   try {
-    const res = await fetch("http://localhost:3000/api/duo-articles", {
+    const base = getApiBaseUrl();
+    const res = await fetch(`${base}/api/duo-articles`, {
       cache: "no-store",
     });
 
