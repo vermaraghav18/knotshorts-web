@@ -1,6 +1,8 @@
+// app/category/[slug]/page.tsx
 export const dynamic = "force-dynamic";
 
 import { notFound } from "next/navigation";
+import { headers } from "next/headers";
 import { isCategorySlug, labelForSlug } from "@/src/lib/categories";
 import CategoryNewsCard from "@/app/components/CategoryNewsCard";
 
@@ -21,7 +23,12 @@ function hasValidSlug(a: Article) {
 }
 
 async function getArticles(): Promise<Article[]> {
-  const res = await fetch("http://localhost:3000/api/articles", {
+  const h = await headers();
+  const proto = h.get("x-forwarded-proto") ?? "http";
+  const host = h.get("host");
+  const baseUrl = `${proto}://${host}`;
+
+  const res = await fetch(`${baseUrl}/api/articles`, {
     cache: "no-store",
   });
 
@@ -58,8 +65,6 @@ export default async function CategoryPage({
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-6">
-      {/* ✅ Header strip removed: no title/count/back-to-home */}
-
       <div className="grid grid-cols-1 gap-4">
         {articles.map((a) => (
           <CategoryNewsCard key={a.id} article={a} />
