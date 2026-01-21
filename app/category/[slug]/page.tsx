@@ -32,6 +32,14 @@ async function getArticles(): Promise<Article[]> {
     cache: "no-store",
   });
 
+  // ✅ Prevent "Unexpected end of JSON input"
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(
+      `API /api/articles failed (${res.status}): ${text.slice(0, 200)}`
+    );
+  }
+
   const json = await res.json();
   return json?.articles || [];
 }

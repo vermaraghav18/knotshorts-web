@@ -1,187 +1,199 @@
 // app/api/articles/route.ts
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
-import { getDb } from "@/src/lib/db";
+import { getMongoClient, getMongoDbName } from "@/src/lib/mongodb";
 import { slugify } from "@/src/lib/slug";
 import { normalizeImageUrl } from "@/src/lib/imageUrl";
+import { ObjectId } from "mongodb";
 
-export async function GET() {
-  const db = getDb();
-  const rows = db
-    .prepare(
-      `SELECT
-        id,
-        title,
-        slug,
-        summary,
-        category,
-        status,
-        featured,
-        breaking,
-        ticker,
+export const runtime = "nodejs";
 
-        -- ✅ Main News Container (Container 1)
-        mainHero,
-        mainHeroSlot,
+type ArticleDoc = {
+  _id?: ObjectId;
+  title: string;
+  slug: string;
+  summary: string;
+  body: string;
+  category: string;
+  tags: string[];
+  coverImage: string | null;
 
-        -- ✅ News Container 2
-        hero2,
-        hero2Slot,
+  featured: number;
+  breaking: number;
+  ticker: number;
 
-        -- ✅ News Container 3
-        hero3,
-        hero3Slot,
+  mainHero: number;
+  mainHeroSlot: string | null;
 
-        publishedAt,
-        createdAt,
-        updatedAt,
-        coverImage
-       FROM articles
-       ORDER BY datetime(createdAt) DESC`
-    )
-    .all();
+  hero2: number;
+  hero2Slot: string | null;
 
-  return NextResponse.json({ ok: true, articles: rows });
+  hero3: number;
+  hero3Slot: string | null;
+
+  status: "draft" | "published";
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+function bool01(v: any) {
+  return Number(v) === 1 || v === true ? 1 : 0;
 }
 
-export async function POST(req: Request) {
-  const db = getDb();
-  const data = await req.json();
+async function getCollection() {
+  const client = await getMongoClient();
+  const dbName = getMongoDbName();
+  return client.db(dbName).collection<ArticleDoc>("articles");
+}
 
-  const title = String(data.title || "").trim();
-  const summary = String(data.summary || "").trim();
-  const body = String(data.body || "").trim();
-  const category = String(data.category || "").trim() || "World";
+export async function GET() {
+  try {
+    const col = await getCollection();
+    const rows = await col.find({}).sort({ createdAt: -1 }).toArray();
 
-  if (!title || !summary || !body) {
+    const articles = rows.map((a) => ({
+      id: String(a._id),
+      title: a.title,
+      slug: a.slug,
+      summary: a.summary,
+      category: a.category,
+      status: a.status,
+      featured: a.featured ?? 0,
+      breaking: a.breaking ?? 0,
+      ticker: a.ticker ?? 0,
+
+      mainHero: a.mainHero ?? 0,
+      mainHeroSlot: a.mainHeroSlot ?? null,
+
+      hero2: a.hero2 ?? 0,
+      hero2Slot: a.hero2Slot ?? null,
+
+      hero3: a.hero3 ?? 0,
+      hero3Slot: a.hero3Slot ?? null,
+
+      publishedAt: a.publishedAt ?? null,
+      createdAt: a.createdAt,
+      updatedAt: a.updatedAt,
+      coverImage: a.coverImage ?? null,
+    }));
+
+    return NextResponse.json({ ok: true, articles });
+  } catch (err: any) {
     return NextResponse.json(
-      { ok: false, error: "Title, summary and body are required." },
-      { status: 400 }
+      { ok: false, error: err?.message || "Failed to load articles" },
+      { status: 500 }
     );
   }
+}
 
-  const now = new Date().toISOString();
-  const id = crypto.randomUUID();
-  let slug = slugify(data.slug ? String(data.slug) : title);
+export async function POST(req: NextRequest) {
+  try {
+    const col = await getCollection();
+    const data = await req.json();
 
-  // ensure unique slug
-  const exists = db.prepare(`SELECT 1 FROM articles WHERE slug = ?`).get(slug);
-  if (exists) slug = `${slug}-${id.slice(0, 6)}`;
+    const title = String(data.title || "").trim();
+    const summary = String(data.summary || "").trim();
+    const body = String(data.body || "").trim();
+    const category = String(data.category || "").trim() || "World";
 
-  const tags = JSON.stringify(Array.isArray(data.tags) ? data.tags : []);
+    if (!title || !summary || !body) {
+      return NextResponse.json(
+        { ok: false, error: "Title, summary and body are required." },
+        { status: 400 }
+      );
+    }
 
-  // ✅ normalize before storing
-  const coverImage = normalizeImageUrl(data.coverImage) || null;
+    const now = new Date().toISOString();
+    const id = crypto.randomUUID();
 
-  // accept boolean true/false OR 1/0
-  const featured = Number(data.featured) === 1 || data.featured === true ? 1 : 0;
-  const breaking = Number(data.breaking) === 1 || data.breaking === true ? 1 : 0;
-  const ticker = Number(data.ticker) === 1 || data.ticker === true ? 1 : 0;
+    let slug = slugify(data.slug ? String(data.slug) : title);
+    const exists = await col.findOne({ slug }, { projection: { _id: 1 } });
+    if (exists) slug = `${slug}-${id.slice(0, 6)}`;
 
-  // ✅ Container 1
-  const mainHero =
-    Number(data.mainHero) === 1 || data.mainHero === true ? 1 : 0;
+    const tags = Array.isArray(data.tags)
+      ? data.tags.filter((x: any) => typeof x === "string")
+      : [];
 
-  const mainHeroSlot = mainHero
-    ? String(data.mainHeroSlot || "").trim() || null
-    : null;
+    const coverImage = normalizeImageUrl(data.coverImage) || null;
 
-  // ✅ Container 2
-  const hero2 = Number(data.hero2) === 1 || data.hero2 === true ? 1 : 0;
-  const hero2Slot = hero2 ? String(data.hero2Slot || "").trim() || null : null;
+    const featured = bool01(data.featured);
+    const breaking = bool01(data.breaking);
+    const ticker = bool01(data.ticker);
 
-  // ✅ Container 3
-  const hero3 = Number(data.hero3) === 1 || data.hero3 === true ? 1 : 0;
-  const hero3Slot = hero3 ? String(data.hero3Slot || "").trim() || null : null;
+    const mainHero = bool01(data.mainHero);
+    const mainHeroSlot =
+      mainHero ? String(data.mainHeroSlot || "").trim() || null : null;
 
-  const status = data.status === "published" ? "published" : "draft";
-  const publishedAt = status === "published" ? now : null;
+    const hero2 = bool01(data.hero2);
+    const hero2Slot =
+      hero2 ? String(data.hero2Slot || "").trim() || null : null;
 
-  // ✅ If setting mainHero in a slot, clear other heroes in that slot
-  if (mainHero === 1 && mainHeroSlot) {
-    db.prepare(
-      `UPDATE articles
-       SET mainHero = 0, mainHeroSlot = NULL
-       WHERE mainHero = 1 AND mainHeroSlot = ?`
-    ).run(mainHeroSlot);
+    const hero3 = bool01(data.hero3);
+    const hero3Slot =
+      hero3 ? String(data.hero3Slot || "").trim() || null : null;
+
+    const status: "draft" | "published" =
+      data.status === "published" ? "published" : "draft";
+
+    const publishedAt = status === "published" ? now : null;
+
+    // Slot conflict clearing
+    if (mainHero === 1 && mainHeroSlot) {
+      await col.updateMany(
+        { mainHero: 1, mainHeroSlot },
+        { $set: { mainHero: 0, mainHeroSlot: null } }
+      );
+    }
+
+    if (hero2 === 1 && hero2Slot) {
+      await col.updateMany(
+        { hero2: 1, hero2Slot },
+        { $set: { hero2: 0, hero2Slot: null } }
+      );
+    }
+
+    if (hero3 === 1 && hero3Slot) {
+      await col.updateMany(
+        { hero3: 1, hero3Slot },
+        { $set: { hero3: 0, hero3Slot: null } }
+      );
+    }
+
+    const doc: ArticleDoc = {
+      title,
+      slug,
+      summary,
+      body,
+      category,
+      tags,
+      coverImage,
+
+      featured,
+      breaking,
+      ticker,
+
+      mainHero,
+      mainHeroSlot,
+
+      hero2,
+      hero2Slot,
+
+      hero3,
+      hero3Slot,
+
+      status,
+      publishedAt,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const result = await col.insertOne(doc);
+    return NextResponse.json({ ok: true, id: String(result.insertedId), slug });
+  } catch (err: any) {
+    return NextResponse.json(
+      { ok: false, error: err?.message || "Failed to create article" },
+      { status: 500 }
+    );
   }
-
-  // ✅ If setting hero2 in a slot, clear other hero2 in that slot
-  if (hero2 === 1 && hero2Slot) {
-    db.prepare(
-      `UPDATE articles
-       SET hero2 = 0, hero2Slot = NULL
-       WHERE hero2 = 1 AND hero2Slot = ?`
-    ).run(hero2Slot);
-  }
-
-  // ✅ If setting hero3 in a slot, clear other hero3 in that slot
-  if (hero3 === 1 && hero3Slot) {
-    db.prepare(
-      `UPDATE articles
-       SET hero3 = 0, hero3Slot = NULL
-       WHERE hero3 = 1 AND hero3Slot = ?`
-    ).run(hero3Slot);
-  }
-
-  db.prepare(
-    `INSERT INTO articles
-     (
-       id,
-       title,
-       slug,
-       summary,
-       body,
-       category,
-       tags,
-       coverImage,
-       featured,
-       breaking,
-       ticker,
-
-       mainHero,
-       mainHeroSlot,
-
-       hero2,
-       hero2Slot,
-
-       hero3,
-       hero3Slot,
-
-       status,
-       publishedAt,
-       createdAt,
-       updatedAt
-     )
-     VALUES
-     (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(
-    id,
-    title,
-    slug,
-    summary,
-    body,
-    category,
-    tags,
-    coverImage,
-    featured,
-    breaking,
-    ticker,
-
-    mainHero,
-    mainHeroSlot,
-
-    hero2,
-    hero2Slot,
-
-    hero3,
-    hero3Slot,
-
-    status,
-    publishedAt,
-    now,
-    now
-  );
-
-  return NextResponse.json({ ok: true, id, slug });
 }

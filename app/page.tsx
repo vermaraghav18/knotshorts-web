@@ -1,5 +1,7 @@
 export const dynamic = "force-dynamic";
 
+import { headers } from "next/headers";
+
 import { proxiedImageSrc } from "@/src/lib/imageUrl";
 import TopStories from "@/app/components/TopStories";
 import InstaPostMarquee from "@/app/components/InstaPostMarquee";
@@ -43,14 +45,21 @@ type Article = {
   coverImage?: string | null;
 };
 
+// ✅ FIX 1: headers() is async in your Next version
+async function getBaseUrl() {
+  const h = await headers();
+  const proto = h.get("x-forwarded-proto") ?? "http";
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  return `${proto}://${host}`;
+}
+
 /**
- * ✅ FIX: relative fetch only (works on Render + Vercel + local)
- * - Removes dependency on headers() / x-forwarded-host / host reconstruction
- * - Prevents "headers is not a function / await headers" SSR/runtime issues
+ * ✅ FIX 2: Server Components should fetch absolute URL reliably
+ * (relative "/api/..." can return null/empty in server runtime)
  */
-async function safeFetchJson<T>(path: string): Promise<T | null> {
+async function safeFetchJson<T>(baseUrl: string, path: string): Promise<T | null> {
   try {
-    const res = await fetch(path, { cache: "no-store" });
+    const res = await fetch(`${baseUrl}${path}`, { cache: "no-store" });
     if (!res.ok) return null;
     return (await res.json()) as T;
   } catch {
@@ -58,30 +67,35 @@ async function safeFetchJson<T>(path: string): Promise<T | null> {
   }
 }
 
-async function getArticles(): Promise<Article[]> {
+async function getArticles(baseUrl: string): Promise<Article[]> {
   const json = await safeFetchJson<{ ok: boolean; articles: Article[] }>(
+    baseUrl,
     "/api/articles"
   );
   return json?.articles || [];
 }
 
-async function getClubConfig(): Promise<ClubArticlesConfig | null> {
+async function getClubConfig(baseUrl: string): Promise<ClubArticlesConfig | null> {
   const json = await safeFetchJson<{ ok: boolean; config: ClubArticlesConfig }>(
+    baseUrl,
     "/api/club-articles"
   );
   return json?.config || null;
 }
 
-async function getSpotlightConfig(): Promise<SpotlightArticlesConfig | null> {
+async function getSpotlightConfig(
+  baseUrl: string
+): Promise<SpotlightArticlesConfig | null> {
   const json = await safeFetchJson<{
     ok: boolean;
     config: SpotlightArticlesConfig;
-  }>("/api/spotlight-articles");
+  }>(baseUrl, "/api/spotlight-articles");
   return json?.config || null;
 }
 
-async function getDuoConfig(): Promise<DuoArticlesConfig | null> {
+async function getDuoConfig(baseUrl: string): Promise<DuoArticlesConfig | null> {
   const json = await safeFetchJson<{ ok: boolean; config: DuoArticlesConfig }>(
+    baseUrl,
     "/api/duo-articles"
   );
   return json?.config || null;
@@ -101,7 +115,7 @@ function hasValidSlug(a: Article) {
   return typeof a?.slug === "string" && a.slug.trim().length > 0;
 }
 
-// ✅ Helper: safe href builder (never returns /article/undefined)
+// ✅ Helper: safe href builder
 function safeArticleHref(a: Article) {
   return hasValidSlug(a) ? `/article/${a.slug.trim()}` : "#";
 }
@@ -148,11 +162,13 @@ function duoKeyForCategory(cat: string): DuoPosition {
 }
 
 export default async function HomePage() {
+  const baseUrl = await getBaseUrl();
+
   const [all, clubConfig, spotlightConfig, duoConfig] = await Promise.all([
-    getArticles(),
-    getClubConfig(),
-    getSpotlightConfig(),
-    getDuoConfig(),
+    getArticles(baseUrl),
+    getClubConfig(baseUrl),
+    getSpotlightConfig(baseUrl),
+    getDuoConfig(baseUrl),
   ]);
 
   // ✅ Only published AND slug-present on public site
@@ -167,7 +183,7 @@ export default async function HomePage() {
     return bd - ad;
   });
 
-  // ✅ Club Articles resolved list (ordered ids -> articles)
+  // ✅ Club Articles resolved list
   const clubPosition = (clubConfig?.position || null) as ClubPosition | null;
   let clubArticles: Article[] | null = null;
 
@@ -182,7 +198,7 @@ export default async function HomePage() {
     if (ordered.length === 5) clubArticles = ordered;
   }
 
-  // ✅ Spotlight Articles resolved list (ordered ids -> articles)
+  // ✅ Spotlight Articles resolved list
   const spotlightPosition = (spotlightConfig?.position ||
     null) as SpotlightPosition | null;
   let spotlightArticles: Article[] | null = null;
@@ -198,7 +214,7 @@ export default async function HomePage() {
     if (ordered.length === 3) spotlightArticles = ordered;
   }
 
-  // ✅ Duo Articles resolved list (ordered ids -> articles)
+  // ✅ Duo Articles resolved list
   const duoPosition = (duoConfig?.position || null) as DuoPosition | null;
   let duoArticles: Article[] | null = null;
 
@@ -245,7 +261,6 @@ export default async function HomePage() {
 
   const byCat = groupByCategory(published);
 
-  // Categories we want on homepage (all on one page)
   const sections = [
     "World",
     "India",
@@ -257,12 +272,12 @@ export default async function HomePage() {
     "Lifestyle",
   ];
 
-  // ✅ Featured used for Top Stories (new hero + grid design)
+  // ✅ Featured used for Top Stories
   const featured = published.filter((a) => a.featured === 1).slice(0, 4);
 
   return (
     <div className="min-h-screen bg-black text-white">
-      {/* ✅ Ticker bar (between header and main) */}
+      {/* ✅ Ticker bar */}
       {tickerItems.length > 0 ? (
         <div className="border-b border-white/10 bg-black/80 backdrop-blur">
           <div className="mx-auto max-w-6xl px-4 py-2 overflow-hidden">
@@ -286,7 +301,14 @@ export default async function HomePage() {
       ) : null}
 
       <main className="mx-auto max-w-6xl px-4 py-8">
-        {/* ✅ Insta Post Moving Strip (for ALL published articles) */}
+        {/* ✅ If nothing published yet, show a friendly placeholder */}
+        {published.length === 0 ? (
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-white/70">
+            No published articles yet. Publish at least 1 article (Status = Published) to populate the homepage.
+          </div>
+        ) : null}
+
+        {/* ✅ Insta Post Moving Strip */}
         <InstaPostMarquee
           articles={postStripItems}
           speedSeconds={38}
@@ -314,24 +336,24 @@ export default async function HomePage() {
           </div>
         ) : null}
 
-        {/* ✅ NEW Top Stories Design (rotating hero + cards below) */}
+        {/* ✅ Top Stories */}
         <TopStories featured={featured} />
 
-        {/* ✅ Spotlight Articles (position: after_top_stories) */}
+        {/* ✅ Spotlight after top stories */}
         {spotlightArticles && spotlightPosition === "after_top_stories" ? (
           <div className="mt-6">
             <SpotlightArticles articles={spotlightArticles} />
           </div>
         ) : null}
 
-        {/* ✅ Duo Articles (position: after_top_stories) */}
+        {/* ✅ Duo after top stories */}
         {duoArticles && duoPosition === "after_top_stories" ? (
           <div className="mt-6">
             <DuoArticles articles={duoArticles} />
           </div>
         ) : null}
 
-        {/* ✅ Club Articles (position: after_top_stories) */}
+        {/* ✅ Club after top stories */}
         {clubArticles && clubPosition === "after_top_stories" ? (
           <div className="mt-6">
             <ClubArticles articles={clubArticles} />
@@ -388,7 +410,7 @@ export default async function HomePage() {
                 </div>
 
                 <div className="space-y-4">
-                  {/* ✅ MAIN NEWS (NO container / open layout) */}
+                  {/* MAIN NEWS */}
                   <a
                     href={safeArticleHref(main)}
                     aria-disabled={!mainOk}
@@ -451,7 +473,7 @@ export default async function HomePage() {
                     </div>
                   </a>
 
-                  {/* ✅ 3 SMALL CARDS BELOW */}
+                  {/* 3 SMALL CARDS */}
                   {small.length ? (
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       {small.map((a) => {
@@ -520,7 +542,7 @@ export default async function HomePage() {
                   ) : null}
                 </div>
 
-                {/* ✅ Container 2 (slot: after_india_section) */}
+                {/* Container 2/3/Main for India section slots */}
                 {cat === "India" && hero2BySlot["after_india_section"] ? (
                   <div className="mt-6">
                     <NewsContainer2
@@ -529,7 +551,6 @@ export default async function HomePage() {
                   </div>
                 ) : null}
 
-                {/* ✅ Container 3 (slot: after_india_section) */}
                 {cat === "India" && hero3BySlot["after_india_section"] ? (
                   <div className="mt-6">
                     <NewsContainer3
@@ -538,7 +559,6 @@ export default async function HomePage() {
                   </div>
                 ) : null}
 
-                {/* ✅ Main News (slot: after_india_section) */}
                 {cat === "India" && mainHeroBySlot["after_india_section"] ? (
                   <div className="mt-6">
                     <MainNewsContainer
@@ -547,21 +567,19 @@ export default async function HomePage() {
                   </div>
                 ) : null}
 
-                {/* ✅ Duo Articles (position: after_<category>_section) */}
+                {/* Duo / Spotlight / Club positions */}
                 {duoArticles && duoPosition === duoKey ? (
                   <div className="mt-6">
                     <DuoArticles articles={duoArticles} />
                   </div>
                 ) : null}
 
-                {/* ✅ Spotlight Articles (position: after_<category>_section) */}
                 {spotlightArticles && spotlightPosition === spotlightKey ? (
                   <div className="mt-6">
                     <SpotlightArticles articles={spotlightArticles} />
                   </div>
                 ) : null}
 
-                {/* ✅ Club Articles (position: after_<category>_section) */}
                 {clubArticles && clubPosition === clubKey ? (
                   <div className="mt-6">
                     <ClubArticles articles={clubArticles} />
