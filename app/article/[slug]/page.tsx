@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { headers } from "next/headers";
-import { getDb } from "@/src/lib/db";
+import { getMongoClient, getMongoDbName } from "@/src/lib/mongodb";
 import { proxiedImageSrc } from "@/src/lib/imageUrl";
 
 type ArticleRow = {
@@ -16,10 +16,11 @@ type ArticleRow = {
   status: "draft" | "published" | string;
   featured: number;
   breaking: number;
+  ticker?: number;
   publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
-  tags?: string; // JSON string
+  tags?: unknown; // Mongo can store array or string
   coverImage?: string | null;
 };
 
@@ -34,8 +35,9 @@ type RelatedRow = {
 };
 
 function safeParseTags(raw: unknown): string[] {
-  if (Array.isArray(raw))
+  if (Array.isArray(raw)) {
     return raw.filter((x) => typeof x === "string") as string[];
+  }
   if (typeof raw !== "string" || !raw.trim()) return [];
   try {
     const parsed = JSON.parse(raw);
@@ -90,6 +92,26 @@ function hasValidSlug(slug: unknown) {
   return typeof slug === "string" && slug.trim().length > 0;
 }
 
+function docToRow(doc: any): ArticleRow {
+  return {
+    id: String(doc?._id ?? ""),
+    title: String(doc?.title ?? ""),
+    slug: String(doc?.slug ?? ""),
+    summary: String(doc?.summary ?? ""),
+    body: String(doc?.body ?? ""),
+    category: String(doc?.category ?? ""),
+    status: String(doc?.status ?? "draft"),
+    featured: typeof doc?.featured === "number" ? doc.featured : 0,
+    breaking: typeof doc?.breaking === "number" ? doc.breaking : 0,
+    ticker: typeof doc?.ticker === "number" ? doc.ticker : 0,
+    publishedAt: doc?.publishedAt ? String(doc.publishedAt) : null,
+    createdAt: doc?.createdAt ? String(doc.createdAt) : new Date().toISOString(),
+    updatedAt: doc?.updatedAt ? String(doc.updatedAt) : new Date().toISOString(),
+    tags: doc?.tags,
+    coverImage: doc?.coverImage ? String(doc.coverImage) : null,
+  };
+}
+
 export default async function ArticlePage(props: {
   params: Promise<{ slug?: string }> | { slug?: string };
 }) {
@@ -117,13 +139,15 @@ export default async function ArticlePage(props: {
     );
   }
 
-  const db = getDb();
+  // ✅ MongoDB: fetch the article by slug
+  const client = await getMongoClient();
+  const db = client.db(getMongoDbName());
+  const col = db.collection("articles");
 
-  const row = db
-    .prepare(`SELECT * FROM articles WHERE slug = ? LIMIT 1`)
-    .get(slug) as ArticleRow | undefined;
+  const doc = await col.findOne({ slug });
 
-  if (!row || String(row.status).toLowerCase() !== "published") {
+  // Only show published articles on public page
+  if (!doc || String((doc as any).status).toLowerCase() !== "published") {
     return (
       <main className="min-h-screen bg-black text-white">
         <div className="mx-auto max-w-3xl px-4 py-16">
@@ -143,6 +167,8 @@ export default async function ArticlePage(props: {
     );
   }
 
+  const row = docToRow(doc);
+
   const tags = safeParseTags((row as any).tags);
   const publishedIso = row.publishedAt || row.createdAt;
   const datePretty = formatPrettyDate(publishedIso);
@@ -155,19 +181,25 @@ export default async function ArticlePage(props: {
   const canonicalUrl = `${origin}/article/${encodeURIComponent(row.slug)}`;
   const share = buildShareUrls(canonicalUrl, row.title);
 
-  // ✅ Latest 4 (published) excluding current article
-  const related = db
-    .prepare(
-      `
-      SELECT id, title, slug, category, coverImage, publishedAt, createdAt
-      FROM articles
-      WHERE lower(status) = 'published'
-        AND slug != ?
-      ORDER BY COALESCE(publishedAt, createdAt) DESC
-      LIMIT 4
-    `
-    )
-    .all(row.slug) as RelatedRow[];
+  // ✅ Latest 4 (published) excluding current article (MongoDB)
+  const relatedDocs = await col
+    .find({
+      status: { $regex: /^published$/i },
+      slug: { $ne: row.slug },
+    })
+    .sort({ publishedAt: -1, createdAt: -1 })
+    .limit(4)
+    .toArray();
+
+  const related = relatedDocs.map((d: any) => ({
+    id: String(d._id),
+    title: String(d.title ?? ""),
+    slug: String(d.slug ?? ""),
+    category: String(d.category ?? ""),
+    coverImage: d.coverImage ? String(d.coverImage) : null,
+    publishedAt: d.publishedAt ? String(d.publishedAt) : null,
+    createdAt: d.createdAt ? String(d.createdAt) : "",
+  })) as RelatedRow[];
 
   const relatedSafe = Array.isArray(related)
     ? related.filter((r) => hasValidSlug(r.slug))
@@ -260,7 +292,7 @@ export default async function ArticlePage(props: {
               {row.title}
             </h1>
 
-            {/* ✅ Premium "IN BRIEF" summary card with 4-color gradient + glow */}
+            {/* ✅ Premium "IN BRIEF" summary card */}
             {row.summary ? (
               <section className="mt-5">
                 <div
@@ -277,7 +309,6 @@ export default async function ArticlePage(props: {
                       "0 12px 40px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(255,255,255,0.04)",
                   }}
                 >
-                  {/* Accent bar (4-color gradient + controlled glow) */}
                   <div
                     className="absolute left-0 top-0 h-full w-[3px]"
                     style={{
@@ -292,12 +323,10 @@ export default async function ArticlePage(props: {
                   />
 
                   <div className="px-5 py-4 md:px-6 md:py-5">
-                    {/* Label */}
                     <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-sky-300">
                       In Brief
                     </div>
 
-                    {/* Summary text */}
                     <p className="text-[15px] md:text-[17px] leading-relaxed text-white/75 max-w-[72ch]">
                       {row.summary}
                     </p>
@@ -311,18 +340,12 @@ export default async function ArticlePage(props: {
                 mt-8
                 max-w-none
                 prose prose-invert
-
-                /* Typography */
                 font-serif
                 [font-family:ui-serif,Georgia,Cambria,Times_New_Roman,Times,serif]
                 text-[18px] md:text-[19px]
-
-                /* Paragraph spacing (prevents clustering) */
                 prose-p:my-6
                 prose-p:leading-[1.85]
                 prose-p:text-white/80
-
-                /* Headings & misc */
                 prose-headings:text-white
                 prose-headings:tracking-tight
                 prose-strong:text-white
