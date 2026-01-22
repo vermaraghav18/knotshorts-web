@@ -121,11 +121,12 @@ export default function CategoryNewsCard({ article }: { article: Article }) {
                 />
 
                <div className="-mt-1 text-[14px] font-medium tracking-wide text-white/90
-                    drop-shadow-[0_2px_6px_rgba(0,0,0,0.85)]
-                    drop-shadow-[0_8px_18px_rgba(0,0,0,0.55)]">
+                drop-shadow-[0_2px_6px_rgba(0,0,0,0.85)]
+                drop-shadow-[0_8px_18px_rgba(0,0,0,0.55)]">
 
                 www.
-                <span className="text-[#00ff8a] text-[19px] font-semibold">knotshorts</span>
+                <span className="text-[#fffff] text-[16px] font-bold">knotshorts</span>
+
                 .com
                 </div>
 
