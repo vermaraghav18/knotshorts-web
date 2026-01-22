@@ -120,9 +120,15 @@ export default function CategoryNewsCard({ article }: { article: Article }) {
                   loading="lazy"
                 />
 
-                <div className="text-[12px] font-medium tracking-wide text-white/90 drop-shadow-[0_6px_16px_rgba(0,0,0,0.6)]">
-                  www.knotshorts.com
+               <div className="-mt-1 text-[14px] font-medium tracking-wide text-white/90
+                    drop-shadow-[0_2px_6px_rgba(0,0,0,0.85)]
+                    drop-shadow-[0_8px_18px_rgba(0,0,0,0.55)]">
+
+                www.
+                <span className="text-[#00ff8a] text-[19px] font-semibold">knotshorts</span>
+                .com
                 </div>
+
               </div>
 
               {/* Bottom stack */}
