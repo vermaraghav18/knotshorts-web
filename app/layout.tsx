@@ -1,6 +1,6 @@
 // app/layout.tsx
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Oswald, Merriweather } from "next/font/google";
 import "./globals.css";
 import SiteHeader from "@/app/components/SiteHeader";
 
@@ -14,6 +14,20 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// For BREAKING NEWS pill
+const oswald = Oswald({
+  variable: "--font-oswald",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
+
+// ✅ For NEWS CARD TITLE
+const merriweather = Merriweather({
+  variable: "--font-merriweather",
+  subsets: ["latin"],
+  weight: ["300", "400", "700"],
+});
+
 export const metadata: Metadata = {
   title: {
     default: "KnotShorts",
@@ -24,12 +38,14 @@ export const metadata: Metadata = {
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} ${oswald.variable} ${merriweather.variable} antialiased`}
+      >
         <div className="min-h-screen bg-black text-white">
           <SiteHeader />
           {children}

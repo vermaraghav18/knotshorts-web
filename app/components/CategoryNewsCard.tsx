@@ -31,6 +31,8 @@ function estimateReadingTimeMinutes(text: string) {
   return Math.max(1, mins);
 }
 
+// kept (harmless) because you may be using it elsewhere,
+// but we will NOT use it for the MOBILE title anymore.
 function splitTitleTwoLines(title: string) {
   const t = (title || "").trim().replace(/\s+/g, " ");
   if (!t) return { line1: "", line2: "" };
@@ -45,6 +47,16 @@ function splitTitleTwoLines(title: string) {
   };
 }
 
+function formatShortDate(d: string | null | undefined) {
+  const raw = d || "";
+  const dt = raw ? new Date(raw) : null;
+  if (!dt || Number.isNaN(dt.getTime())) return "";
+  const day = dt.getDate();
+  const month = dt.getMonth() + 1;
+  const yy = String(dt.getFullYear()).slice(-2);
+  return `${day}/${month}/${yy}`;
+}
+
 export default function CategoryNewsCard({ article }: { article: Article }) {
   const ok = hasValidSlug(article);
 
@@ -57,7 +69,10 @@ export default function CategoryNewsCard({ article }: { article: Article }) {
     `${article.title || ""} ${article.summary || ""}`
   );
 
-  const { line1, line2 } = splitTitleTwoLines(article.title);
+  // kept (but NOT used in mobile title now)
+  splitTitleTwoLines(article.title);
+
+  const dateText = formatShortDate(article.publishedAt || article.createdAt);
 
   return (
     <Link
@@ -71,7 +86,8 @@ export default function CategoryNewsCard({ article }: { article: Article }) {
     >
       <div className="flex flex-col md:flex-row md:h-[240px]">
         {/* IMAGE */}
-        <div className="relative w-full md:w-[420px] h-[320px] md:h-full shrink-0 overflow-hidden">
+        {/* ✅ Mobile becomes true 4:5 (template), Desktop unchanged */}
+        <div className="relative w-full md:w-[420px] aspect-[4/5] md:aspect-auto md:h-full shrink-0 overflow-hidden">
           {imgSrc ? (
             <img
               src={imgSrc}
@@ -85,11 +101,79 @@ export default function CategoryNewsCard({ article }: { article: Article }) {
             </div>
           )}
 
-          {/* ✅ Mobile only vignette (SHORTER, bottom-only) */}
-          <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-16 md:hidden bg-gradient-to-t from-black/90 via-black/45 to-transparent" />
+          {/* ✅ MOBILE ONLY overlays */}
+          <div className="md:hidden pointer-events-none absolute inset-0">
+            {/* Bottom dark readability gradient */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent" />
 
-          {/* Category tag */}
-          <div className="absolute left-4 top-4">
+            {/* Green low-opacity glow (bottom-right) */}
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_85%,rgba(0,140,80,0.40)_0%,rgba(0,140,80,0.0)_62%)]" />
+
+            {/* Layout wrapper */}
+            <div className="absolute inset-0 p-4 flex flex-col">
+              {/* Top row: logo left, website right */}
+              <div className="flex items-start justify-between">
+                <img
+                  src="/brand/knotshorts-logo.png"
+                  alt="KnotShorts"
+                  className="-mt-5 -ml-5 h-16 w-auto opacity-95 drop-shadow-[0_10px_24px_rgba(0,0,0,0.45)]"
+                  loading="lazy"
+                />
+
+                <div className="text-[12px] font-medium tracking-wide text-white/90 drop-shadow-[0_6px_16px_rgba(0,0,0,0.6)]">
+                  www.knotshorts.com
+                </div>
+              </div>
+
+              {/* Bottom stack */}
+              <div className="mt-auto space-y-2">
+                {/* ✅ Breaking pill moved UP more (visual space increases to title) */}
+                <div className="inline-flex items-center bg-[#E63B3B] px-4 py-1.5 shadow-[0_8px_18px_rgba(0,0,0,0.30)] transform -translate-y--2">
+                  <span className="[font-family:var(--font-oswald)] text-[clamp(14px,3.6vw,18px)] font-semibold tracking-[0.06em] text-white uppercase leading-none">
+                    BREAKING NEWS
+                  </span>
+                </div>
+
+                {/* ✅ Title: natural wrapping (no forced line split) + better line spacing */}
+                <div className="text-white drop-shadow-[0_10px_26px_rgba(0,0,0,0.75)]">
+                  <div
+                    className="
+                      [font-family:var(--font-merriweather)]
+                      text-[clamp(22px,5.6vw,34px)]
+                      font-normal
+                      leading-[1.40]
+                      [text-wrap:balance]
+                    "
+                  >
+                    {article.title}
+                  </div>
+                </div>
+
+                {/* Bottom info bar */}
+                <div className="h-11 rounded-xl bg-white/12 backdrop-blur-sm border border-white/10 shadow-[0_10px_22px_rgba(0,0,0,0.30)] flex items-center px-4">
+                  <div className="text-[11px] text-white/80">
+                    {dateText ? `Date: ${dateText}` : ""}
+                  </div>
+
+                  <div className="flex-1 flex justify-center">
+                    <div className="text-[13px] font-semibold text-white/90">
+                      KnotShorts
+                    </div>
+                  </div>
+
+                  <img
+                    src="/brand/knotshorts-logo.png"
+                    alt="KnotShorts"
+                    className="h-10 w-10 object-contain opacity-95 drop-shadow-[0_6px_14px_rgba(0,0,0,0.35)]"
+                    loading="lazy"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Category tag (DESKTOP ONLY so mobile matches template) */}
+          <div className="absolute left-4 top-4 hidden md:block">
             <span
               className="
                 inline-flex items-center
@@ -106,39 +190,9 @@ export default function CategoryNewsCard({ article }: { article: Article }) {
               {article.category}
             </span>
           </div>
-
-          {/* MOBILE ONLY: logo + centered title */}
-          <div className="md:hidden absolute inset-x-0 bottom-0 pb-3">
-            <div className="flex flex-col items-center gap-2">
-              <img
-                src="/brand/knotshorts-logo-1080-2.png"
-                alt="KnotShorts"
-                className="h-8 w-auto opacity-95 shadow-[0_6px_20px_rgba(0,0,0,0.35)]"
-                loading="lazy"
-              />
-
-              {line1 && (
-                <div className="flex justify-center px-3 w-full">
-                  <div className="bg-[#FB2C36]/95 px-4 py-2 w-fit max-w-[92%] text-center shadow-[0_8px_18px_rgba(0,0,0,0.50)]">
-                    <div className="text-[17px] font-extrabold leading-snug text-white break-words">
-                      {line1}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {line2 && (
-                <div className="w-full px-4 text-center">
-                  <div className="text-[16px] font-bold leading-snug text-white drop-shadow-[0_6px_14px_rgba(0,0,0,0.70)] break-words">
-                    {line2}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
         </div>
 
-        {/* DESKTOP ONLY CONTENT */}
+        {/* DESKTOP ONLY CONTENT (UNCHANGED) */}
         <div className="hidden md:flex flex-1 min-w-0 p-6 h-full flex-col justify-between">
           <div className="min-w-0">
             <h3 className="text-2xl font-medium leading-snug text-white/92 group-hover:text-white transition-colors line-clamp-2">
