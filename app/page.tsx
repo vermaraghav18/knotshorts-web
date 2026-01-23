@@ -4,7 +4,6 @@ import { headers } from "next/headers";
 
 import { proxiedImageSrc } from "@/src/lib/imageUrl";
 import TopStories from "@/app/components/TopStories";
-import InstaPostMarquee from "@/app/components/InstaPostMarquee";
 import MainNewsContainer from "@/app/components/MainNewsContainer";
 import NewsContainer2 from "@/app/components/NewsContainer2";
 import NewsContainer3 from "@/app/components/NewsContainer3";
@@ -57,7 +56,10 @@ async function getBaseUrl() {
  * ✅ FIX 2: Server Components should fetch absolute URL reliably
  * (relative "/api/..." can return null/empty in server runtime)
  */
-async function safeFetchJson<T>(baseUrl: string, path: string): Promise<T | null> {
+async function safeFetchJson<T>(
+  baseUrl: string,
+  path: string
+): Promise<T | null> {
   try {
     const res = await fetch(`${baseUrl}${path}`, { cache: "no-store" });
     if (!res.ok) return null;
@@ -75,7 +77,9 @@ async function getArticles(baseUrl: string): Promise<Article[]> {
   return json?.articles || [];
 }
 
-async function getClubConfig(baseUrl: string): Promise<ClubArticlesConfig | null> {
+async function getClubConfig(
+  baseUrl: string
+): Promise<ClubArticlesConfig | null> {
   const json = await safeFetchJson<{ ok: boolean; config: ClubArticlesConfig }>(
     baseUrl,
     "/api/club-articles"
@@ -125,27 +129,27 @@ function hasCoverImage(a: Article) {
   return typeof a?.coverImage === "string" && a.coverImage.trim().length > 0;
 }
 
-/** ✅ Category badge colors */
+/** ✅ Category tag colors (rectangular newsroom tags) */
 function categoryBadgeClass(category: string) {
   switch (category) {
     case "World":
-      return "bg-gradient-to-r from-blue-500 to-cyan-400 text-white border-transparent";
+      return "bg-cyan-500 text-white";
     case "Entertainment":
-      return "bg-purple-500/20 text-purple-200 border-purple-400/30";
+      return "bg-purple-600 text-white";
     case "India":
-      return "bg-orange-500/20 text-orange-200 border-orange-400/30";
+      return "bg-orange-500 text-white";
     case "Business":
-      return "bg-green-500/20 text-green-200 border-green-400/30";
+      return "bg-green-600 text-white";
     case "Sports":
-      return "bg-yellow-400/20 text-yellow-200 border-yellow-300/30";
+      return "bg-yellow-500 text-black";
     case "Technology":
-      return "bg-sky-400/20 text-sky-200 border-sky-300/30";
+      return "bg-blue-600 text-white";
     case "Health":
-      return "bg-black/40 text-white/85 border-white/15";
+      return "bg-emerald-600 text-white";
     case "Lifestyle":
-      return "bg-teal-500/20 text-teal-200 border-teal-400/30";
+      return "bg-pink-500 text-white";
     default:
-      return "bg-white/5 text-white/70 border-white/15";
+      return "bg-zinc-700 text-white";
   }
 }
 
@@ -256,9 +260,6 @@ export default async function HomePage() {
   // ✅ Ticker items list
   const tickerItems = published.filter((a) => a.ticker === 1).slice(0, 12);
 
-  // ✅ Insta post strip items (ALL published, newest first)
-  const postStripItems = published.slice(0, 14);
-
   const byCat = groupByCategory(published);
 
   const sections = [
@@ -279,8 +280,8 @@ export default async function HomePage() {
     <div className="min-h-screen bg-black text-white">
       {/* ✅ Ticker bar */}
       {tickerItems.length > 0 ? (
-        <div className="border-b border-white/10 bg-black/80 backdrop-blur">
-          <div className="mx-auto max-w-6xl px-4 py-2 overflow-hidden">
+        <div className="border-b border-white/10 bg-red-600">
+          <div className="mx-auto max-w-6xl px-4 py-[2px] overflow-hidden">
             <div className="ks-ticker">
               <div className="ks-ticker-track">
                 {[...tickerItems, ...tickerItems].map((a, idx) => (
@@ -300,20 +301,14 @@ export default async function HomePage() {
         </div>
       ) : null}
 
-      <main className="mx-auto max-w-6xl px-4 py-8">
+      <main className="mx-auto max-w-6xl px-4 pt-2 pb-8">
         {/* ✅ If nothing published yet, show a friendly placeholder */}
         {published.length === 0 ? (
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-white/70">
-            No published articles yet. Publish at least 1 article (Status = Published) to populate the homepage.
+          <div className="rounded-none border border-white/10 bg-white/5 p-6 text-white/70">
+            No published articles yet. Publish at least 1 article (Status =
+            Published) to populate the homepage.
           </div>
         ) : null}
-
-        {/* ✅ Insta Post Moving Strip */}
-        <InstaPostMarquee
-          articles={postStripItems}
-          speedSeconds={38}
-          title="Insta Post Strip"
-        />
 
         {/* ✅ Main News (slot: after_insta_strip) */}
         {mainHeroBySlot["after_insta_strip"] ? (
@@ -409,72 +404,82 @@ export default async function HomePage() {
                   </span>
                 </div>
 
+                {/* ✅ Make category containers EXACTLY like TopStories */}
                 <div className="space-y-4">
-                  {/* MAIN NEWS */}
-                  <a
-                    href={safeArticleHref(main)}
-                    aria-disabled={!mainOk}
-                    className="group block"
-                    style={{
-                      pointerEvents: mainOk ? "auto" : "none",
-                      opacity: mainOk ? 1 : 0.55,
-                    }}
-                  >
-                    <div className="flex flex-col md:flex-row gap-4 md:gap-6">
-                      {/* Image Left */}
-                      <div className="w-full md:w-[340px]">
-                        {mainImgSrc ? (
-                          <img
-                            src={mainImgSrc}
-                            alt={main.title}
-                            className="w-full h-[220px] md:h-[220px] object-cover rounded-2xl border border-white/10"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <div className="w-full h-[220px] flex items-center justify-center text-white/30 text-sm rounded-2xl border border-white/10 bg-white/5">
-                            No image
-                          </div>
-                        )}
-                      </div>
+                 {/* HERO — match TopStories HERO exactly */}
+<a
+  href={safeArticleHref(main)}
+  aria-disabled={!mainOk}
+  className="group block border border-white/10 bg-white/5 hover:bg-white/10 transition overflow-hidden"
+  style={{
+    pointerEvents: mainOk ? "auto" : "none",
+    opacity: mainOk ? 1 : 0.55,
+  }}
+>
+  <div className="grid grid-cols-1 md:grid-cols-[420px_1fr]">
+    {/* Image block (TopStories exact) */}
+    <div className="relative">
+      {mainImgSrc ? (
+        <>
+          {/* Blur fill background */}
+          <img
+            src={mainImgSrc}
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover blur-xl scale-110"
+            aria-hidden
+          />
 
-                      {/* Content Right */}
-                      <div className="flex-1 min-w-0">
-                        <div className="mb-2 flex items-center gap-2 text-xs">
-                          {main.breaking === 1 ? (
-                            <span className="rounded-full border border-red-500/30 bg-red-500/10 px-2 py-1 text-red-200">
-                              Breaking
-                            </span>
-                          ) : (
-                            <span
-                              className={`rounded-full border px-2 py-1 text-xs ${categoryBadgeClass(
-                                cat
-                              )}`}
-                            >
-                              {cat}
-                            </span>
-                          )}
+          {/* Foreground image (NO CROP) */}
+          <img
+            src={mainImgSrc}
+            alt={main.title}
+            className="relative z-10 w-full h-[220px] md:h-[280px] object-contain"
+            loading="lazy"
+          />
+        </>
+      ) : (
+        <div className="w-full h-[220px] md:h-[280px] bg-white/5" />
+      )}
 
-                          <span className="text-white/40">
-                            {String(main.publishedAt || main.createdAt).slice(
-                              0,
-                              10
-                            )}
-                          </span>
-                        </div>
+      {/* Contrast overlay (TopStories exact) */}
+      <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+    </div>
 
-                        <div className="text-2xl md:text-3xl lg:text-4xl font-extrabold leading-tight tracking-tight group-hover:underline line-clamp-2">
-                          {main.title}
-                        </div>
+    {/* Content block (TopStories exact spacing/typography) */}
+    <div className="p-4 md:p-6">
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
+        <span
+          className={`px-2 py-[3px] text-[11px] font-semibold uppercase tracking-wide ${categoryBadgeClass(
+            cat
+          )}`}
+        >
+          {cat}
+        </span>
 
-                        <p className="mt-3 text-sm md:text-[15px] text-white/70 leading-relaxed line-clamp-3">
-                          {main.summary}
-                        </p>
-                      </div>
-                    </div>
-                  </a>
+        {main.breaking === 1 && (
+          <>
+            <span className="w-[2px] h-4 bg-red-600" />
+            <span className="px-2 py-[3px] text-[11px] font-semibold uppercase tracking-wide bg-red-600 text-white">
+              Breaking
+            </span>
+          </>
+        )}
+      </div>
 
-                  {/* 3 SMALL CARDS */}
-                  {small.length ? (
+      <div className="text-lg md:text-2xl font-bold leading-snug group-hover:underline">
+        {main.title}
+      </div>
+
+      <p className="mt-3 text-sm md:text-base text-white/70 line-clamp-4">
+        {main.summary}
+      </p>
+    </div>
+  </div>
+</a>
+
+
+                  {/* THREE SMALL CARDS */}
+                  {small.length > 0 && (
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       {small.map((a) => {
                         const ok = hasValidSlug(a);
@@ -488,58 +493,67 @@ export default async function HomePage() {
                             key={a.id}
                             href={safeArticleHref(a)}
                             aria-disabled={!ok}
-                            className="group rounded-2xl border border-white/10 bg-white/5 p-4 hover:bg-white/10 transition"
+                            className="group border border-white/10 bg-white/5 hover:bg-white/10 transition overflow-hidden"
                             style={{
                               pointerEvents: ok ? "auto" : "none",
                               opacity: ok ? 1 : 0.55,
                             }}
                           >
-                            {imgSrc ? (
-                              <div className="mb-3 overflow-hidden rounded-xl border border-white/10 bg-white/5">
-                                <img
-                                  src={imgSrc}
-                                  alt={a.title}
-                                  className="w-full h-[120px] object-cover"
-                                  loading="lazy"
-                                />
-                              </div>
-                            ) : null}
-
-                            <div className="mb-2 flex items-center gap-2 text-xs">
-                              {a.breaking === 1 ? (
-                                <span className="rounded-full border border-red-500/30 bg-red-500/10 px-2 py-1 text-red-200">
-                                  Breaking
-                                </span>
+                            <div className="relative h-[170px] w-full">
+                              {imgSrc ? (
+                                <>
+                                  <img
+                                    src={imgSrc}
+                                    alt=""
+                                    className="absolute inset-0 w-full h-full object-cover blur-xl scale-110"
+                                    aria-hidden
+                                  />
+                                  <img
+                                    src={imgSrc}
+                                    alt={a.title}
+                                    className="relative z-10 w-full h-full object-contain"
+                                    loading="lazy"
+                                  />
+                                </>
                               ) : (
+                                <div className="absolute inset-0 bg-white/5" />
+                              )}
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+                            </div>
+
+                            <div className="p-4">
+                              <div className="mb-2 flex items-center gap-2 text-xs">
                                 <span
-                                  className={`rounded-full border px-2 py-1 text-xs ${categoryBadgeClass(
+                                  className={`px-2 py-[3px] text-[11px] font-semibold uppercase tracking-wide ${categoryBadgeClass(
                                     cat
                                   )}`}
                                 >
                                   {cat}
                                 </span>
-                              )}
 
-                              <span className="text-white/40">
-                                {String(a.publishedAt || a.createdAt).slice(
-                                  0,
-                                  10
+                                {a.breaking === 1 && (
+                                  <>
+                                    <span className="w-[2px] h-4 bg-red-600" />
+                                    <span className="px-2 py-[3px] text-[11px] font-semibold uppercase tracking-wide bg-red-600 text-white">
+                                      Breaking
+                                    </span>
+                                  </>
                                 )}
-                              </span>
-                            </div>
+                              </div>
 
-                            <div className="text-sm font-semibold leading-snug group-hover:underline line-clamp-2">
-                              {a.title}
-                            </div>
+                              <div className="text-base font-semibold leading-snug group-hover:underline line-clamp-2">
+                                {a.title}
+                              </div>
 
-                            <p className="mt-2 text-xs text-white/60 line-clamp-2">
-                              {a.summary}
-                            </p>
+                              <p className="mt-2 text-sm text-white/65 leading-relaxed line-clamp-3 md:line-clamp-4">
+                                {a.summary}
+                              </p>
+                            </div>
                           </a>
                         );
                       })}
                     </div>
-                  ) : null}
+                  )}
                 </div>
 
                 {/* Container 2/3/Main for India section slots */}
