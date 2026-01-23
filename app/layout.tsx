@@ -43,6 +43,15 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+  <head>
+    <link
+      rel="alternate"
+      type="application/rss+xml"
+      title="KnotShorts RSS"
+      href="/rss.xml"
+    />
+  </head>
+
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${oswald.variable} ${merriweather.variable} antialiased`}
       >
