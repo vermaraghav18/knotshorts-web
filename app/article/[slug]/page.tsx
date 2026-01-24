@@ -151,9 +151,12 @@ export default async function ArticlePage(props: {
     `${row.title || ""} ${row.summary || ""} ${row.body || ""}`
   );
 
-  const origin = await originFromHeaders();
-  const canonicalUrl = `${origin}/article/${encodeURIComponent(row.slug)}`;
+  // Canonical origin fixed for SEO (do not use request headers)
+  const canonicalUrl = `https://knotshorts.com/article/${encodeURIComponent(row.slug)}`;
   const share = buildShareUrls(canonicalUrl, row.title);
+
+  // const origin = await originFromHeaders();
+  
 
   // ✅ Latest 4 (published) excluding current article (MongoDB)
   const relatedDocs = await col
