@@ -2,6 +2,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { headers } from "next/headers";
 import { getMongoClient, getMongoDbName } from "@/src/lib/mongodb";
 import { proxiedImageSrc } from "@/src/lib/imageUrl";
@@ -123,21 +124,9 @@ export default async function ArticlePage(props: {
   const slug = decodeURIComponent(String(p?.slug || "")).trim();
 
   if (!slug) {
-    return (
-      <main className="min-h-screen bg-black text-white">
-        <div className="mx-auto max-w-3xl px-4 py-16">
-          <h1 className="text-2xl font-bold">Not found</h1>
-          <p className="mt-2 text-white/60">Missing slug.</p>
-          <Link
-            href="/"
-            className="mt-6 inline-flex items-center gap-2 border border-white/15 bg-white/5 px-4 py-2 hover:bg-white/10 transition"
-          >
-            ← Back to home
-          </Link>
-        </div>
-      </main>
-    );
+    notFound();
   }
+
 
   // ✅ MongoDB: fetch the article by slug
   const client = await getMongoClient();
@@ -148,24 +137,9 @@ export default async function ArticlePage(props: {
 
   // Only show published articles on public page
   if (!doc || String((doc as any).status).toLowerCase() !== "published") {
-    return (
-      <main className="min-h-screen bg-black text-white">
-        <div className="mx-auto max-w-3xl px-4 py-16">
-          <h1 className="text-2xl font-bold">Not found</h1>
-          <p className="mt-2 text-white/60">
-            This article doesn’t exist (or it’s not published yet).
-          </p>
-
-          <Link
-            href="/"
-            className="mt-6 inline-flex items-center gap-2 border border-white/15 bg-white/5 px-4 py-2 hover:bg-white/10 transition"
-          >
-            ← Back to home
-          </Link>
-        </div>
-      </main>
-    );
+    notFound();
   }
+
 
   const row = docToRow(doc);
 
