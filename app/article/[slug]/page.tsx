@@ -1,11 +1,29 @@
 // app/article/[slug]/page.tsx
-export const dynamic = "force-dynamic";
-
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { headers } from "next/headers";
 import { getMongoClient, getMongoDbName } from "@/src/lib/mongodb";
 import { proxiedImageSrc } from "@/src/lib/imageUrl";
+
+export const dynamic = "force-dynamic";
+
+export async function generateMetadata(props: {
+  params: Promise<{ slug?: string }> | { slug?: string };
+}) {
+  const p =
+    typeof (props.params as any)?.then === "function"
+      ? await (props.params as Promise<{ slug?: string }>)
+      : (props.params as { slug?: string });
+
+  const slug = decodeURIComponent(String(p?.slug || "")).trim();
+
+  const canonical = slug
+    ? `https://knotshorts.com/article/${encodeURIComponent(slug)}`
+    : "https://knotshorts.com";
+
+  return {
+    alternates: { canonical },
+  };
+}
 
 type ArticleRow = {
   id: string;
@@ -71,13 +89,6 @@ function estimateReadingTimeMinutes(text: string) {
   return Math.max(1, mins);
 }
 
-async function originFromHeaders() {
-  const h = await headers();
-  const proto = h.get("x-forwarded-proto") ?? "http";
-  const host = h.get("x-forwarded-host") ?? h.get("host");
-  return host ? `${proto}://${host}` : "http://localhost:3000";
-}
-
 function buildShareUrls(canonicalUrl: string, title: string) {
   const u = encodeURIComponent(canonicalUrl);
   const t = encodeURIComponent(title);
@@ -122,11 +133,7 @@ export default async function ArticlePage(props: {
       : (props.params as { slug?: string });
 
   const slug = decodeURIComponent(String(p?.slug || "")).trim();
-
-  if (!slug) {
-    notFound();
-  }
-
+  if (!slug) notFound();
 
   // ✅ MongoDB: fetch the article by slug
   const client = await getMongoClient();
@@ -140,7 +147,6 @@ export default async function ArticlePage(props: {
     notFound();
   }
 
-
   const row = docToRow(doc);
 
   const tags = safeParseTags((row as any).tags);
@@ -151,12 +157,11 @@ export default async function ArticlePage(props: {
     `${row.title || ""} ${row.summary || ""} ${row.body || ""}`
   );
 
-  // Canonical origin fixed for SEO (do not use request headers)
-  const canonicalUrl = `https://knotshorts.com/article/${encodeURIComponent(row.slug)}`;
+  // ✅ Stable canonical for SEO + Google News
+  const canonicalUrl = `https://knotshorts.com/article/${encodeURIComponent(
+    row.slug
+  )}`;
   const share = buildShareUrls(canonicalUrl, row.title);
-
-  // const origin = await originFromHeaders();
-  
 
   // ✅ Latest 4 (published) excluding current article (MongoDB)
   const relatedDocs = await col
