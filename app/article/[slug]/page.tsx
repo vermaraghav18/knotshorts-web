@@ -1,28 +1,26 @@
 // app/article/[slug]/page.tsx
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import { getMongoClient, getMongoDbName } from "@/src/lib/mongodb";
 import { proxiedImageSrc } from "@/src/lib/imageUrl";
 
 export const dynamic = "force-dynamic";
 
-export async function generateMetadata(props: {
-  params: Promise<{ slug?: string }> | { slug?: string };
-}) {
+const SITE_NAME = "KnotShorts";
+const SITE_URL = "https://knotshorts.com";
+const DEFAULT_AUTHOR = "KnotShorts News Desk";
+
+// ✅ Helper: robust slug extraction (supports params as Promise in your setup)
+async function resolveSlug(
+  params: Promise<{ slug?: string }> | { slug?: string }
+) {
   const p =
-    typeof (props.params as any)?.then === "function"
-      ? await (props.params as Promise<{ slug?: string }>)
-      : (props.params as { slug?: string });
+    typeof (params as any)?.then === "function"
+      ? await (params as Promise<{ slug?: string }>)
+      : (params as { slug?: string });
 
-  const slug = decodeURIComponent(String(p?.slug || "")).trim();
-
-  const canonical = slug
-    ? `https://knotshorts.com/article/${encodeURIComponent(slug)}`
-    : "https://knotshorts.com";
-
-  return {
-    alternates: { canonical },
-  };
+  return decodeURIComponent(String(p?.slug || "")).trim();
 }
 
 type ArticleRow = {
@@ -124,15 +122,95 @@ function docToRow(doc: any): ArticleRow {
   };
 }
 
+// ✅ Small util to keep metadata clean and safe
+function clampText(s: string, max: number) {
+  const v = (s || "").replace(/\s+/g, " ").trim();
+  if (!v) return "";
+  return v.length <= max ? v : v.slice(0, max - 1).trimEnd() + "…";
+}
+
+// ✅ helper: ensure absolute URL for OG images
+function ensureAbsoluteUrl(url: string) {
+  if (!url) return "";
+  return url.startsWith("http") ? url : `${SITE_URL}${url}`;
+}
+
+// ✅ Phase 2.1: real per-article metadata (DB-wired)
+export async function generateMetadata(props: {
+  params: Promise<{ slug?: string }> | { slug?: string };
+}): Promise<Metadata> {
+  const slug = await resolveSlug(props.params);
+
+  const canonical = slug
+    ? `${SITE_URL}/article/${encodeURIComponent(slug)}`
+    : SITE_URL;
+
+  // If no slug, keep it safe and minimal
+  if (!slug) {
+    return {
+      alternates: { canonical: SITE_URL },
+      robots: { index: false, follow: false },
+    };
+  }
+
+  try {
+    const client = await getMongoClient();
+    const db = client.db(getMongoDbName());
+    const col = db.collection("articles");
+
+    const doc = await col.findOne({ slug });
+
+    // Draft/unpublished -> noindex
+    if (!doc || String((doc as any).status).toLowerCase() !== "published") {
+      return {
+        alternates: { canonical },
+        robots: { index: false, follow: false },
+      };
+    }
+
+    const row = docToRow(doc);
+
+    const title = clampText(row.title, 80) || SITE_NAME;
+    const description = clampText(row.summary || row.body || "", 160);
+
+    // ✅ OG must be absolute
+    const ogImage = row.coverImage
+      ? ensureAbsoluteUrl(proxiedImageSrc(row.coverImage))
+      : undefined;
+
+    return {
+      title,
+      description,
+      alternates: { canonical },
+      robots: { index: true, follow: true },
+      openGraph: {
+        title,
+        description,
+        url: canonical,
+        type: "article",
+        siteName: SITE_NAME,
+        images: ogImage ? [{ url: ogImage, alt: title }] : [],
+      },
+      twitter: {
+        card: "summary_large_image",
+        title,
+        description,
+        images: ogImage ? [ogImage] : [],
+      },
+    };
+  } catch {
+    // If metadata fetch fails, still return canonical and avoid indexing
+    return {
+      alternates: { canonical },
+      robots: { index: false, follow: false },
+    };
+  }
+}
+
 export default async function ArticlePage(props: {
   params: Promise<{ slug?: string }> | { slug?: string };
 }) {
-  const p =
-    typeof (props.params as any)?.then === "function"
-      ? await (props.params as Promise<{ slug?: string }>)
-      : (props.params as { slug?: string });
-
-  const slug = decodeURIComponent(String(p?.slug || "")).trim();
+  const slug = await resolveSlug(props.params);
   if (!slug) notFound();
 
   // ✅ MongoDB: fetch the article by slug
@@ -151,6 +229,7 @@ export default async function ArticlePage(props: {
 
   const tags = safeParseTags((row as any).tags);
   const publishedIso = row.publishedAt || row.createdAt;
+  const modifiedIso = row.updatedAt || publishedIso;
   const datePretty = formatPrettyDate(publishedIso);
 
   const readMins = estimateReadingTimeMinutes(
@@ -158,9 +237,7 @@ export default async function ArticlePage(props: {
   );
 
   // ✅ Stable canonical for SEO + Google News
-  const canonicalUrl = `https://knotshorts.com/article/${encodeURIComponent(
-    row.slug
-  )}`;
+  const canonicalUrl = `${SITE_URL}/article/${encodeURIComponent(row.slug)}`;
   const share = buildShareUrls(canonicalUrl, row.title);
 
   // ✅ Latest 4 (published) excluding current article (MongoDB)
@@ -187,8 +264,48 @@ export default async function ArticlePage(props: {
     ? related.filter((r) => hasValidSlug(r.slug))
     : [];
 
+  // ✅ JSON-LD image must be absolute too
+  const ogImage = row.coverImage
+    ? ensureAbsoluteUrl(proxiedImageSrc(row.coverImage))
+    : "";
+
+  // ✅ Phase 2.3: NewsArticle JSON-LD
+  const newsLd = {
+    "@context": "https://schema.org",
+    "@type": "NewsArticle",
+    inLanguage: "en",
+    mainEntityOfPage: {
+      "@type": "WebPage",
+      "@id": canonicalUrl,
+    },
+    headline: row.title,
+    description: row.summary || "",
+    datePublished: new Date(publishedIso).toISOString(),
+    dateModified: new Date(modifiedIso).toISOString(),
+    author: {
+      "@type": "Organization",
+      name: DEFAULT_AUTHOR,
+    },
+    publisher: {
+      "@type": "NewsMediaOrganization",
+      name: SITE_NAME,
+      logo: {
+        "@type": "ImageObject",
+        // ✅ Use a real logo that exists in /public
+        url: `${SITE_URL}/knotshorts-logo.png`,
+      },
+    },
+    image: ogImage ? [ogImage] : [],
+  };
+
   return (
     <main className="min-h-screen bg-black text-white">
+      {/* ✅ JSON-LD (Google News trust signal) */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(newsLd) }}
+      />
+
       <div className="mx-auto max-w-6xl px-4 pt-3 pb-8 md:pt-4 md:pb-10">
         <div className="grid grid-cols-1 gap-8 md:grid-cols-[minmax(0,1fr)_280px]">
           {/* LEFT: Main content */}
@@ -243,7 +360,7 @@ export default async function ArticlePage(props: {
             ) : null}
 
             {/* Pills BELOW image */}
-            <div className="mb-6 flex flex-wrap items-center gap-2 text-xs">
+            <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
               <Link
                 href={`/category/${encodeURIComponent(
                   String(row.category || "").toLowerCase()
@@ -267,6 +384,19 @@ export default async function ArticlePage(props: {
 
               <span className="border border-white/10 bg-white/5 px-3 py-1 text-white/60">
                 {readMins} min read
+              </span>
+            </div>
+
+            {/* ✅ Visible date + author (Google News wants visible signals) */}
+            <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-white/55">
+              <span className="inline-flex items-center gap-2">
+                <span className="h-1.5 w-1.5 rounded-full bg-white/30" />
+                <span>{datePretty}</span>
+              </span>
+              <span className="hidden sm:inline text-white/25">•</span>
+              <span className="inline-flex items-center gap-2">
+                <span className="h-1.5 w-1.5 rounded-full bg-white/30" />
+                <span>{DEFAULT_AUTHOR}</span>
               </span>
             </div>
 
@@ -377,6 +507,11 @@ export default async function ArticlePage(props: {
               </div>
 
               <div className="mt-4 space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-white/60">Author</span>
+                  <span className="text-white/85">{DEFAULT_AUTHOR}</span>
+                </div>
+
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-white/60">Category</span>
 
