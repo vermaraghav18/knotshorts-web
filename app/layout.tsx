@@ -1,9 +1,9 @@
 // app/layout.tsx
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Geist, Geist_Mono, Oswald, Merriweather } from "next/font/google";
 import "./globals.css";
 import SiteHeader from "@/app/components/SiteHeader";
-import Link from "next/link";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -22,12 +22,22 @@ const oswald = Oswald({
   weight: ["400", "500", "600", "700"],
 });
 
-// For NEWS CARD TITLE
+// ✅ For NEWS CARD TITLE
 const merriweather = Merriweather({
   variable: "--font-merriweather",
   subsets: ["latin"],
   weight: ["300", "400", "700"],
 });
+
+const SITE_NAME = "KnotShorts";
+const SITE_URL = "https://knotshorts.com";
+
+// ✅ If you have official socials, put them here. Empty array is fine.
+const SAME_AS: string[] = [
+  // "https://www.instagram.com/<yourhandle>/",
+  // "https://www.youtube.com/@<yourhandle>",
+  // "https://x.com/<yourhandle>",
+];
 
 export const metadata: Metadata = {
   title: {
@@ -35,6 +45,10 @@ export const metadata: Metadata = {
     template: "%s · KnotShorts",
   },
   description: "Fast. Clean. Readable.",
+  metadataBase: new URL(SITE_URL),
+  alternates: {
+    canonical: SITE_URL,
+  },
 };
 
 export default function RootLayout({
@@ -42,6 +56,19 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // ✅ SITEWIDE Publisher / Organization JSON-LD
+  const orgLd = {
+    "@context": "https://schema.org",
+    "@type": "NewsMediaOrganization",
+    name: SITE_NAME,
+    url: SITE_URL,
+    logo: {
+      "@type": "ImageObject",
+      url: `${SITE_URL}/logo.png`,
+    },
+    sameAs: SAME_AS,
+  };
+
   return (
     <html lang="en">
       <head>
@@ -51,47 +78,61 @@ export default function RootLayout({
           title="KnotShorts RSS"
           href="/rss.xml"
         />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(orgLd) }}
+        />
       </head>
 
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${oswald.variable} ${merriweather.variable} antialiased`}
       >
-        <div className="min-h-screen bg-black text-white flex flex-col">
+        <div className="min-h-screen bg-black text-white">
           <SiteHeader />
 
-          <main className="flex-1">{children}</main>
+          {/* ✅ Main content */}
+          {children}
 
-          {/* ✅ TRUST FOOTER (Phase 4) */}
-          <footer className="border-t border-white/10 mt-16">
-            <div className="mx-auto max-w-6xl px-4 py-8 text-sm text-white/70">
-              <div className="flex flex-wrap gap-x-6 gap-y-2 justify-center md:justify-between items-center">
-                <div className="flex flex-wrap gap-x-4 gap-y-2 justify-center">
-                  <Link href="/about" className="hover:text-white">
+          {/* ✅ Footer: Trust Pages (publisher requirements) */}
+          <footer className="mt-12 border-t border-white/10 bg-black/60">
+            <div className="mx-auto max-w-6xl px-4 py-8">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-sm text-white/60">
+                  © {new Date().getFullYear()} {SITE_NAME}
+                </div>
+
+                <nav className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+                  <Link
+                    href="/about"
+                    className="text-white/70 hover:text-white transition"
+                  >
                     About
                   </Link>
-                  <Link href="/contact" className="hover:text-white">
+                  <Link
+                    href="/contact"
+                    className="text-white/70 hover:text-white transition"
+                  >
                     Contact
                   </Link>
                   <Link
                     href="/editorial-policy"
-                    className="hover:text-white"
+                    className="text-white/70 hover:text-white transition"
                   >
                     Editorial Policy
                   </Link>
-                  <Link href="/corrections" className="hover:text-white">
+                  <Link
+                    href="/corrections"
+                    className="text-white/70 hover:text-white transition"
+                  >
                     Corrections
                   </Link>
                   <Link
                     href="/privacy-policy"
-                    className="hover:text-white"
+                    className="text-white/70 hover:text-white transition"
                   >
                     Privacy Policy
                   </Link>
-                </div>
-
-                <div className="text-xs text-white/50 text-center md:text-right">
-                  © {new Date().getFullYear()} KnotShorts. All rights reserved.
-                </div>
+                </nav>
               </div>
             </div>
           </footer>
