@@ -64,7 +64,8 @@ export default function RootLayout({
     url: SITE_URL,
     logo: {
       "@type": "ImageObject",
-      url: `${SITE_URL}/logo.png`,
+      // ✅ FIX: real logo file that actually exists in /public
+      url: `${SITE_URL}/knotshorts-logo.png`,
     },
     sameAs: SAME_AS,
   };
@@ -131,6 +132,12 @@ export default function RootLayout({
                     className="text-white/70 hover:text-white transition"
                   >
                     Privacy Policy
+                  </Link>
+                  <Link
+                    href="/terms"
+                    className="text-white/70 hover:text-white transition"
+                  >
+                    Terms
                   </Link>
                 </nav>
               </div>

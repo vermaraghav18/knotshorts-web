@@ -1,3 +1,4 @@
+// app/robots.ts
 import type { MetadataRoute } from "next";
 
 export default function robots(): MetadataRoute.Robots {
@@ -5,8 +6,8 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: "*",
-        allow: "/",
-        disallow: ["/admin", "/api"],
+        allow: ["/", "/api/image"], // ✅ allow image proxy route for OG/images
+        disallow: ["/admin", "/api"], // ✅ still block admin + most API
       },
     ],
     sitemap: [
