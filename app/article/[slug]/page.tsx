@@ -5,7 +5,31 @@ import type { Metadata } from "next";
 import { getMongoClient, getMongoDbName } from "@/src/lib/mongodb";
 import { proxiedImageSrc } from "@/src/lib/imageUrl";
 
-export const dynamic = "force-dynamic";
+
+export async function generateStaticParams() {
+  try {
+    const client = await getMongoClient();
+    const db = client.db(getMongoDbName());
+    const col = db.collection("articles");
+
+    const docs = await col
+      .find({ status: { $regex: /^published$/i } })
+      .project({ slug: 1 })
+      .toArray();
+
+    return docs
+      .map((d: any) => d.slug)
+      .filter(Boolean)
+      .map((slug: string) => ({ slug }));
+  } catch (e) {
+    return [];
+  }
+}
+
+export const dynamic = "force-static";
+export const dynamicParams = false;
+export const revalidate = 3600; // revalidate every 1 hour
+
 
 const SITE_NAME = "KnotShorts";
 const SITE_URL = "https://knotshorts.com";
