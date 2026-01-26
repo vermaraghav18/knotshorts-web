@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { proxiedImageSrc } from "@/src/lib/imageUrl";
 
@@ -92,6 +92,33 @@ export default function EditArticlePage() {
 
   const [tagsText, setTagsText] = useState("");
   const [coverImage, setCoverImage] = useState("");
+
+  // ✅ NEW: textarea ref for selection highlight
+  const bodyRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // ✅ NEW: wrap selection with == == so website renders yellow highlight
+  function wrapBodySelection(prefix: string, suffix: string) {
+    const el = bodyRef.current;
+    if (!el) return;
+
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? 0;
+    if (end <= start) return;
+
+    const selected = body.slice(start, end);
+    const next =
+      body.slice(0, start) + prefix + selected + suffix + body.slice(end);
+
+    setBody(next);
+
+    // Restore selection safely (avoid queueMicrotask compatibility issues)
+    setTimeout(() => {
+      try {
+        el.focus();
+        el.setSelectionRange(start + prefix.length, end + prefix.length);
+      } catch {}
+    }, 0);
+  }
 
   useEffect(() => {
     if (!id) {
@@ -392,12 +419,36 @@ export default function EditArticlePage() {
             placeholder="Summary *"
           />
 
-          <textarea
-            className="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-3 min-h-[260px]"
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            placeholder="Body *"
-          />
+          {/* ✅ NEW: Body highlight toolbar */}
+          <div>
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <button
+                type="button"
+                onClick={() => wrapBodySelection("==", "==")}
+                className="rounded-md border border-yellow-300/30 bg-yellow-300/10 px-3 py-1 text-xs text-yellow-200 hover:bg-yellow-300/15"
+              >
+                Highlight (yellow)
+              </button>
+
+              <div className="text-xs text-white/50">
+                Tip: Paste a Cloudinary image URL on its own line/paragraph to
+                render an image inside the article.
+              </div>
+            </div>
+
+            <textarea
+              className="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-3 min-h-[260px]"
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder="Body *"
+              ref={bodyRef}
+            />
+
+            <div className="mt-2 text-xs text-white/50">
+              Highlight format is stored as{" "}
+              <span className="text-yellow-200">==like this==</span>.
+            </div>
+          </div>
 
           {/* ✅ Collision warning (helps avoid confusion) */}
           {hasSlotCollision ? (

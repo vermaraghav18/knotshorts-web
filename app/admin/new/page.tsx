@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 const CATEGORIES = [
@@ -69,6 +69,34 @@ export default function AdminNewArticlePage() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // ✅ NEW: textarea ref for selection-based highlight
+  const bodyRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // ✅ NEW: wrap selection with == == so website can render yellow highlight
+  function wrapBodySelection(prefix: string, suffix: string) {
+    const el = bodyRef.current;
+    if (!el) return;
+
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? 0;
+
+    if (end <= start) return;
+
+    const selected = body.slice(start, end);
+    const next =
+      body.slice(0, start) + prefix + selected + suffix + body.slice(end);
+
+    setBody(next);
+
+    // Restore selection to highlighted text (no queueMicrotask for compatibility)
+    setTimeout(() => {
+      try {
+        el.focus();
+        el.setSelectionRange(start + prefix.length, end + prefix.length);
+      } catch {}
+    }, 0);
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -214,6 +242,23 @@ export default function AdminNewArticlePage() {
 
           <div>
             <label className="text-sm text-white/70">Body *</label>
+
+            {/* ✅ NEW: Body toolbar */}
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => wrapBodySelection("==", "==")}
+                className="rounded-md border border-yellow-300/30 bg-yellow-300/10 px-3 py-1 text-xs text-yellow-200 hover:bg-yellow-300/15"
+              >
+                Highlight (yellow)
+              </button>
+
+              <div className="text-xs text-white/50">
+                Tip: Paste a Cloudinary image URL on its own line/paragraph to
+                render an image inside the article.
+              </div>
+            </div>
+
             <textarea
               className="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 outline-none focus:border-white/30"
               value={body}
@@ -221,7 +266,14 @@ export default function AdminNewArticlePage() {
               rows={10}
               placeholder="Full article text..."
               required
+              ref={bodyRef}
             />
+
+            <div className="mt-2 text-xs text-white/50">
+              Highlight format is stored as{" "}
+              <span className="text-yellow-200">==like this==</span> (you can
+              type it manually too).
+            </div>
           </div>
 
           {/* ✅ Cover image URL */}
