@@ -4,6 +4,9 @@ import { getMongoClient, getMongoDbName } from "@/src/lib/mongodb";
 
 export const runtime = "nodejs";
 
+const SITE_URL = "https://knotshorts.com";
+const FEED_URL = `${SITE_URL}/rss.xml`;
+
 type ArticleDoc = {
   _id?: any;
   title: string;
@@ -18,7 +21,7 @@ type ArticleDoc = {
 };
 
 function escapeXml(input: string) {
-  return input
+  return String(input || "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -38,49 +41,64 @@ async function getCollection() {
   return client.db(dbName).collection<ArticleDoc>("articles");
 }
 
-function getOriginFromHeaders(headers: Headers) {
-  const proto = headers.get("x-forwarded-proto") ?? "https";
-  const host = headers.get("x-forwarded-host") ?? headers.get("host");
-  return host ? `${proto}://${host}` : "http://localhost:3000";
+function hasValidSlug(slug: unknown) {
+  return typeof slug === "string" && slug.trim().length > 0;
 }
 
-export async function GET(req: Request) {
-  try {
-    const origin = getOriginFromHeaders(req.headers);
-    const siteLink = origin;
-    const feedLink = `${origin}/rss.xml`;
+function ensureAbsoluteUrl(url: string) {
+  if (!url) return "";
+  return url.startsWith("http") ? url : `${SITE_URL}${url}`;
+}
 
+function proxiedImageUrl(original: string) {
+  // ✅ Use your crawlable proxy route (now allowed in robots)
+  // It returns image/png but that's ok—RSS readers generally accept this.
+  const u = encodeURIComponent(original);
+  return `${SITE_URL}/api/image?url=${u}`;
+}
+
+export async function GET() {
+  try {
     const col = await getCollection();
 
-    // ✅ Only published articles
+    // ✅ Only published, case-insensitive, must have slug
     const rows = await col
-      .find({ status: "published" })
+      .find({
+        status: { $regex: /^published$/i },
+        slug: { $exists: true, $ne: "" },
+      })
       .sort({ publishedAt: -1, createdAt: -1 })
       .limit(100)
       .toArray();
 
+    const safeRows = rows.filter((r) => hasValidSlug(r.slug));
+
     const lastBuild =
-      rows?.[0]?.publishedAt ||
-      rows?.[0]?.updatedAt ||
-      rows?.[0]?.createdAt ||
+      safeRows?.[0]?.publishedAt ||
+      safeRows?.[0]?.updatedAt ||
+      safeRows?.[0]?.createdAt ||
       new Date().toISOString();
 
-    const itemsXml = rows
+    const itemsXml = safeRows
       .map((a) => {
         const title = escapeXml(a.title || "");
         const description = escapeXml(a.summary || "");
-        const slug = a.slug || "";
-        const link = `${origin}/article/${encodeURIComponent(slug)}`;
+        const slug = String(a.slug || "").trim();
+        const link = `${SITE_URL}/article/${encodeURIComponent(slug)}`;
 
         const pubDate = toRfc2822(a.publishedAt || a.createdAt);
-        const guid = `${origin}/article/${encodeURIComponent(slug)}`;
+        const guid = link;
 
-        const category = a.category ? `<category>${escapeXml(a.category)}</category>` : "";
+        const category = a.category
+          ? `<category>${escapeXml(a.category)}</category>`
+          : "";
 
-        // Optional image enclosure (safe if coverImage exists)
+        // ✅ Optional image enclosure (absolute + through proxy)
         const enclosure =
           a.coverImage && String(a.coverImage).trim()
-            ? `<enclosure url="${escapeXml(String(a.coverImage))}" type="image/jpeg" />`
+            ? `<enclosure url="${escapeXml(
+                proxiedImageUrl(ensureAbsoluteUrl(String(a.coverImage)))
+              )}" type="image/png" />`
             : "";
 
         return `
@@ -96,15 +114,16 @@ export async function GET(req: Request) {
       })
       .join("\n");
 
+    // ✅ Proper atom namespace at root
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0">
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
 <channel>
   <title>KnotShorts</title>
-  <link>${siteLink}</link>
+  <link>${SITE_URL}</link>
   <description>Latest published articles from KnotShorts</description>
   <language>en</language>
   <lastBuildDate>${toRfc2822(lastBuild)}</lastBuildDate>
-  <atom:link href="${feedLink}" rel="self" type="application/rss+xml" xmlns:atom="http://www.w3.org/2005/Atom"/>
+  <atom:link href="${FEED_URL}" rel="self" type="application/rss+xml"/>
 ${itemsXml}
 </channel>
 </rss>`;
@@ -113,14 +132,29 @@ ${itemsXml}
       status: 200,
       headers: {
         "Content-Type": "application/rss+xml; charset=utf-8",
-        // helps avoid stale cached feeds
-        "Cache-Control": "no-store",
+        // ✅ RSS should be cacheable but fresh
+        "Cache-Control": "public, max-age=300, s-maxage=300",
       },
     });
   } catch (err: any) {
-    return NextResponse.json(
-      { ok: false, error: err?.message || "Failed to generate RSS" },
-      { status: 500 }
-    );
+    // ✅ Keep RSS endpoint responding with RSS even on error (better for publishers)
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+<channel>
+  <title>KnotShorts</title>
+  <link>${SITE_URL}</link>
+  <description>Latest published articles from KnotShorts</description>
+  <language>en</language>
+  <atom:link href="${FEED_URL}" rel="self" type="application/rss+xml"/>
+</channel>
+</rss>`;
+
+    return new NextResponse(xml, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/rss+xml; charset=utf-8",
+        "Cache-Control": "no-store",
+      },
+    });
   }
 }
