@@ -1,10 +1,79 @@
 // app/category/[slug]/page.tsx
 export const dynamic = "force-dynamic";
 
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { headers } from "next/headers";
 import { isCategorySlug, labelForSlug } from "@/src/lib/categories";
 import CategoryNewsCard from "@/app/components/CategoryNewsCard";
+
+const SITE_NAME = "KnotShorts";
+const SITE_URL = "https://knotshorts.com";
+
+/* ---------------------------
+   Phase 1.5 — Category Metadata
+---------------------------- */
+function titleCase(s: string) {
+  return s
+    .split(/[-\s]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+export async function generateMetadata(props: {
+  params: Promise<{ slug: string }> | { slug: string };
+}): Promise<Metadata> {
+  const p =
+    typeof (props.params as any)?.then === "function"
+      ? await (props.params as Promise<{ slug: string }>)
+      : (props.params as { slug: string });
+
+  const rawSlug = decodeURIComponent(String(p?.slug || "")).trim().toLowerCase();
+
+  if (!rawSlug || !isCategorySlug(rawSlug)) {
+    return {
+      title: SITE_NAME,
+      alternates: { canonical: SITE_URL },
+      robots: { index: true, follow: true },
+    };
+  }
+
+  const label = labelForSlug(rawSlug);
+  if (!label) {
+    return {
+      title: SITE_NAME,
+      alternates: { canonical: SITE_URL },
+      robots: { index: true, follow: true },
+    };
+  }
+
+  const labelPretty = titleCase(label);
+  const canonical = `${SITE_URL}/category/${encodeURIComponent(rawSlug)}`;
+
+  return {
+    title: `${labelPretty} News`,
+    description: `Latest ${labelPretty} news, updates, and explainers from KnotShorts.`,
+    alternates: { canonical },
+    robots: { index: true, follow: true },
+    openGraph: {
+      title: `${labelPretty} News`,
+      description: `Latest ${labelPretty} news from KnotShorts.`,
+      url: canonical,
+      siteName: SITE_NAME,
+      type: "website",
+    },
+    twitter: {
+      card: "summary",
+      title: `${labelPretty} News`,
+      description: `Latest ${labelPretty} news from KnotShorts.`,
+    },
+  };
+}
+
+/* ---------------------------
+   Existing Page Logic (UNCHANGED)
+---------------------------- */
 
 type Article = {
   id: string;
@@ -32,7 +101,6 @@ async function getArticles(): Promise<Article[]> {
     cache: "no-store",
   });
 
-  // ✅ Prevent "Unexpected end of JSON input"
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(
@@ -64,7 +132,6 @@ export default async function CategoryPage({
     .filter((a) => a.category === label)
     .filter((a) => hasValidSlug(a));
 
-  // newest first
   articles.sort((a, b) => {
     const ad = new Date(a.publishedAt || a.createdAt).getTime();
     const bd = new Date(b.publishedAt || b.createdAt).getTime();
