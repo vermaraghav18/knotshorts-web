@@ -57,18 +57,37 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   // ✅ SITEWIDE Publisher / Organization JSON-LD
-  const orgLd = {
-    "@context": "https://schema.org",
-    "@type": "NewsMediaOrganization",
-    name: SITE_NAME,
-    url: SITE_URL,
-    logo: {
-      "@type": "ImageObject",
-      // ✅ FIX: real logo file that actually exists in /public
-      url: `${SITE_URL}/knotshorts-logo.png`,
-    },
-    sameAs: SAME_AS,
-  };
+  // ✅ SITEWIDE Publisher / Organization JSON-LD
+const orgLd = {
+  "@context": "https://schema.org",
+  "@type": "NewsMediaOrganization",
+  name: SITE_NAME,
+  url: SITE_URL,
+  logo: {
+    "@type": "ImageObject",
+    url: `${SITE_URL}/knotshorts-logo.png`,
+  },
+
+  // ✅ GEO TRUST (India)
+  address: {
+    "@type": "PostalAddress",
+    addressCountry: "IN",
+  },
+
+  // ✅ Contact signal (required for publishers)
+  contactPoint: {
+    "@type": "ContactPoint",
+    contactType: "editorial",
+    email: "editor@knotshorts.com",
+  },
+
+  // ✅ Social presence (can be empty or updated later)
+  sameAs: [
+    "https://www.instagram.com/knotshorts/",
+    "https://x.com/knotshorts",
+  ],
+};
+
 
   return (
     <html lang="en">
