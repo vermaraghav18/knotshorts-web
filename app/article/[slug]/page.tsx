@@ -30,7 +30,7 @@ export async function generateStaticParams() {
 }
 
 export const dynamic = "force-static";
-export const dynamicParams = false;
+export const dynamicParams = true;
 export const revalidate = 3600; // revalidate every 1 hour
 
 const SITE_NAME = "KnotShorts";
