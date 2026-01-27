@@ -4,34 +4,16 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getMongoClient, getMongoDbName } from "@/src/lib/mongodb";
 import { proxiedImageSrc } from "@/src/lib/imageUrl";
-import {
-  parseBodyToBlocks,
-  parseInlineHighlight,
-} from "@/src/lib/bodyBlocks";
+import { parseBodyToBlocks, parseInlineHighlight } from "@/src/lib/bodyBlocks";
 
-export async function generateStaticParams() {
-  try {
-    const client = await getMongoClient();
-    const db = client.db(getMongoDbName());
-    const col = db.collection("articles");
-
-    const docs = await col
-      .find({ status: { $regex: /^published$/i } })
-      .project({ slug: 1 })
-      .toArray();
-
-    return docs
-      .map((d: any) => d.slug)
-      .filter(Boolean)
-      .map((slug: string) => ({ slug }));
-  } catch (e) {
-    return [];
-  }
-}
-
-export const dynamic = "force-static";
+// ✅ FIX ONCE: Always render dynamically (prevents cached prerender 404s)
+export const dynamic = "force-dynamic";
+// ✅ Allow slugs not known at build time
 export const dynamicParams = true;
-export const revalidate = 3600; // revalidate every 1 hour
+// ✅ Disable caching of the route output (prevents sticky 404)
+export const revalidate = 0;
+// ✅ Extra safety: don’t cache fetches (if you add any later)
+export const fetchCache = "force-no-store";
 
 const SITE_NAME = "KnotShorts";
 const SITE_URL = "https://knotshorts.com";
@@ -161,6 +143,17 @@ function ensureAbsoluteUrl(url: string) {
   return url.startsWith("http") ? url : `${SITE_URL}${url}`;
 }
 
+// ✅ helper: escape regex safely
+function escapeRegex(input: string) {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// ✅ helper: find article by slug case-insensitively (prevents mismatch 404)
+async function findArticleBySlug(col: any, slug: string) {
+  const rx = new RegExp(`^${escapeRegex(slug)}$`, "i");
+  return col.findOne({ slug: rx });
+}
+
 // ✅ Phase 2.1: real per-article metadata (DB-wired)
 export async function generateMetadata(props: {
   params: Promise<{ slug?: string }> | { slug?: string };
@@ -184,7 +177,7 @@ export async function generateMetadata(props: {
     const db = client.db(getMongoDbName());
     const col = db.collection("articles");
 
-    const doc = await col.findOne({ slug });
+    const doc = await findArticleBySlug(col, slug);
 
     // Draft/unpublished -> noindex
     if (!doc || String((doc as any).status).toLowerCase() !== "published") {
@@ -239,12 +232,12 @@ export default async function ArticlePage(props: {
   const slug = await resolveSlug(props.params);
   if (!slug) notFound();
 
-  // ✅ MongoDB: fetch the article by slug
+  // ✅ MongoDB: fetch the article by slug (case-insensitive)
   const client = await getMongoClient();
   const db = client.db(getMongoDbName());
   const col = db.collection("articles");
 
-  const doc = await col.findOne({ slug });
+  const doc = await findArticleBySlug(col, slug);
 
   // Only show published articles on public page
   if (!doc || String((doc as any).status).toLowerCase() !== "published") {
@@ -476,124 +469,123 @@ export default async function ArticlePage(props: {
               </section>
             ) : null}
 
-           <article
-  className="
-    mt-8
-    max-w-none
-    prose prose-invert
-    font-serif
-    text-[18px] md:text-[19px]
-    prose-p:leading-[1.85]
-    prose-p:text-white/80
-    prose-headings:text-white
-  "
->
-  {bodyBlocks.map((b, i) => {
-    if (b.type === "h2") {
-      return (
-        <h2 key={i} className="mt-10 mb-4 text-2xl font-bold">
-          {b.text}
-        </h2>
-      );
-    }
-
-    if (b.type === "quote") {
-      return (
-        <blockquote
-          key={i}
-          className="my-8 border-l-4 border-yellow-400 pl-5 italic text-white/85 text-xl"
-        >
-          {b.text}
-        </blockquote>
-      );
-    }
-
-    if (b.type === "divider") {
-      return <hr key={i} className="my-10 border-white/10" />;
-    }
-
-    if (b.type === "img") {
-      return (
-        <figure key={i} className="my-10">
-          <img
-            src={proxiedImageSrc(b.url)}
-            alt=""
-            className="w-full object-contain"
-          />
-          {b.caption ? (
-            <figcaption className="mt-2 text-xs text-white/50">
-              {b.caption}
-            </figcaption>
-          ) : null}
-        </figure>
-      );
-    }
-
-    if (b.type === "ul") {
-      return (
-        <ul key={i} className="list-disc pl-6 my-6 text-white/80">
-          {b.items.map((it, j) => (
-            <li key={j}>{it}</li>
-          ))}
-        </ul>
-      );
-    }
-
-    if (b.type === "ol") {
-      return (
-        <ol key={i} className="list-decimal pl-6 my-6 text-white/80">
-          {b.items.map((it, j) => (
-            <li key={j}>{it}</li>
-          ))}
-        </ol>
-      );
-    }
-
-    if (b.type === "takeaways") {
-      return (
-        <div
-          key={i}
-          className="my-10 border border-white/10 bg-white/5 p-5"
-        >
-          <div className="mb-3 text-sm uppercase text-yellow-300">
-            Key Takeaways
-          </div>
-          <ul className="list-disc pl-6 text-white/80">
-            {b.items.map((it, j) => (
-              <li key={j}>{it}</li>
-            ))}
-          </ul>
-        </div>
-      );
-    }
-
-    const parts = parseInlineHighlight(b.text);
-    return (
-      <p key={i}>
-        {parts.map((p, j) =>
-          p.type === "highlight" ? (
-            <mark
-              key={j}
-              className="bg-yellow-300 text-black px-1 rounded"
+            <article
+              className="
+                mt-8
+                max-w-none
+                prose prose-invert
+                font-serif
+                text-[18px] md:text-[19px]
+                prose-p:leading-[1.85]
+                prose-p:text-white/80
+                prose-headings:text-white
+              "
             >
-              {p.value}
-            </mark>
-          ) : p.type === "alert" ? (
-            <mark
-              key={j}
-              className="bg-red-500/90 text-white px-1 rounded"
-            >
-              {p.value}
-            </mark>
-          ) : (
-            <span key={j}>{p.value}</span>
-          )
-        )}
-      </p>
-    );
-  })}
-</article>
+              {bodyBlocks.map((b, i) => {
+                if (b.type === "h2") {
+                  return (
+                    <h2 key={i} className="mt-10 mb-4 text-2xl font-bold">
+                      {b.text}
+                    </h2>
+                  );
+                }
 
+                if (b.type === "quote") {
+                  return (
+                    <blockquote
+                      key={i}
+                      className="my-8 border-l-4 border-yellow-400 pl-5 italic text-white/85 text-xl"
+                    >
+                      {b.text}
+                    </blockquote>
+                  );
+                }
+
+                if (b.type === "divider") {
+                  return <hr key={i} className="my-10 border-white/10" />;
+                }
+
+                if (b.type === "img") {
+                  return (
+                    <figure key={i} className="my-10">
+                      <img
+                        src={proxiedImageSrc(b.url)}
+                        alt=""
+                        className="w-full object-contain"
+                      />
+                      {b.caption ? (
+                        <figcaption className="mt-2 text-xs text-white/50">
+                          {b.caption}
+                        </figcaption>
+                      ) : null}
+                    </figure>
+                  );
+                }
+
+                if (b.type === "ul") {
+                  return (
+                    <ul key={i} className="list-disc pl-6 my-6 text-white/80">
+                      {b.items.map((it, j) => (
+                        <li key={j}>{it}</li>
+                      ))}
+                    </ul>
+                  );
+                }
+
+                if (b.type === "ol") {
+                  return (
+                    <ol key={i} className="list-decimal pl-6 my-6 text-white/80">
+                      {b.items.map((it, j) => (
+                        <li key={j}>{it}</li>
+                      ))}
+                    </ol>
+                  );
+                }
+
+                if (b.type === "takeaways") {
+                  return (
+                    <div
+                      key={i}
+                      className="my-10 border border-white/10 bg-white/5 p-5"
+                    >
+                      <div className="mb-3 text-sm uppercase text-yellow-300">
+                        Key Takeaways
+                      </div>
+                      <ul className="list-disc pl-6 text-white/80">
+                        {b.items.map((it, j) => (
+                          <li key={j}>{it}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                }
+
+                const parts = parseInlineHighlight((b as any).text || "");
+                return (
+                  <p key={i}>
+                    {parts.map((p, j) =>
+                      p.type === "highlight" ? (
+                        <mark
+                          key={j}
+                          className="bg-yellow-300 text-black px-1 rounded"
+                        >
+                          {p.value}
+                        </mark>
+                      ) : p.type === "alert" ? (
+                        <mark
+                          key={j}
+                          className="bg-red-500/90 text-white px-1 rounded"
+                        >
+                          {p.value}
+                        </mark>
+                      ) : (
+                        <span key={j}>{p.value}</span>
+                      )
+                    )}
+                  </p>
+                );
+              })}
+            </article>
 
             {/* Tags: optional on mobile only (after body) */}
             {tags.length > 0 ? (
